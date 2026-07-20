@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Libraries and user data — NEVER commit a writing library or backups.
+*.db
+*.db.before-*
+*.wvbackup
+*.wvdoc
+
+# Local working files not part of the project
+_old_flat_copy/
+WordVaultDesign.docx
+
+# Editors / OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

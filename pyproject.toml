@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# WordVault — project metadata and build configuration.
+#
+# Stage 1 ships only the storage layer, which uses nothing but the Python
+# standard library (sqlite3, difflib, uuid, dataclasses).  PyQt6 and
+# python-docx arrive in later stages and will be added to [project.dependencies]
+# when the code that needs them lands.
+# ---------------------------------------------------------------------------
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wordvault"
+version = "0.1.0"
+description = "A version-tracking plain-text writing environment backed by SQLite."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Andrew Hopkins" }]
+keywords = ["editor", "writing", "versioning", "sqlite", "history"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Editors",
+]
+# Stage 1: standard library only — nothing to declare.
+dependencies = []
+
+[project.optional-dependencies]
+# Developer tooling; install with:  pip install -e ".[dev]"
+dev = ["pytest>=7"]
+# The editor GUI (stages 2+):
+gui = ["PyQt6>=6.5"]
+# The .docx library importer (stage 4):
+ingest = ["python-docx>=1.1"]
+# Encrypted backups and .wvdoc files (stage 8):
+crypto = ["cryptography>=41"]
+# SQLCipher encryption of the live database (stage 9).
+# On Windows/macOS use:  pip install sqlcipher3-wheels
+encrypted-db = ["sqlcipher3-binary; sys_platform == 'linux'"]
+
+[tool.setuptools.packages.find]
+include = ["wordvault*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
