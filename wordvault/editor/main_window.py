@@ -106,7 +106,20 @@ class MainWindow(QMainWindow):
         self._build_library_dock()
         self._build_side_panels()
         self._build_menu()
+        self._build_toolbar()
         self._build_status_bar()
+
+        # Persisted preferences (auto-save pause, font size) — QSettings
+        # stores them per user on both Windows and Linux.
+        from PyQt6.QtCore import QSettings
+
+        self._settings = QSettings("WordVault", "WordVault")
+        self._editor.set_idle_ms(
+            int(self._settings.value("idle_ms", EditorPane.IDLE_MS))
+        )
+        self._editor.set_font_point_size(
+            int(self._settings.value("font_pt", 12))
+        )
 
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
@@ -194,7 +207,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(backup_action)
 
         restore_action = QAction("Rest&ore Library from Backup…", self)
-        restore_action.triggered.connect(self._on_restore)
+        restore_action.triggered.connect(self._on_restore_library)
         file_menu.addAction(restore_action)
 
         file_menu.addSeparator()
@@ -230,8 +243,42 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)  # closeEvent saves first
         file_menu.addAction(quit_action)
 
-        # --- Edit menu: marking passages for gather (stage 6) ---
+        # --- Edit menu: clipboard, Markdown commands, gather marking ---
         edit_menu = self.menuBar().addMenu("&Edit")
+
+        def add_edit(text, shortcut, slot):
+            action = QAction(text, self)
+            if shortcut:
+                action.setShortcut(shortcut)
+            action.triggered.connect(slot)
+            edit_menu.addAction(action)
+            return action
+
+        add_edit("&Undo", QKeySequence.StandardKey.Undo, lambda: self._editor.undo())
+        add_edit("&Redo", QKeySequence.StandardKey.Redo, lambda: self._editor.redo())
+        edit_menu.addSeparator()
+        add_edit("Cu&t", QKeySequence.StandardKey.Cut, lambda: self._editor.cut())
+        add_edit("&Copy", QKeySequence.StandardKey.Copy, lambda: self._editor.copy())
+        add_edit("&Paste", QKeySequence.StandardKey.Paste, lambda: self._editor.paste())
+        add_edit("Select &All", QKeySequence.StandardKey.SelectAll,
+                 lambda: self._editor.selectAll())
+        edit_menu.addSeparator()
+
+        # Markdown commands — they simply type the plain-text conventions.
+        add_edit("&Bold", "Ctrl+B",
+                 lambda: self._editor.toggle_inline_marks("**"))
+        add_edit("&Italic", "Ctrl+I",
+                 lambda: self._editor.toggle_inline_marks("*"))
+        add_edit("Heading &1", "Ctrl+1", lambda: self._editor.set_heading_level(1))
+        add_edit("Heading &2", "Ctrl+2", lambda: self._editor.set_heading_level(2))
+        add_edit("Heading &3", "Ctrl+3", lambda: self._editor.set_heading_level(3))
+        add_edit("Remove &Heading", "Ctrl+0",
+                 lambda: self._editor.set_heading_level(0))
+        add_edit("Toggle Bullet &List", "Ctrl+Shift+L",
+                 lambda: self._editor.toggle_line_prefix("- "))
+        add_edit("Toggle &Quote", "Ctrl+Shift+Q",
+                 lambda: self._editor.toggle_line_prefix("> "))
+        edit_menu.addSeparator()
 
         mark_action = QAction("&Mark Selection for Gather", self)
         mark_action.setShortcut("Ctrl+M")
@@ -246,6 +293,12 @@ class MainWindow(QMainWindow):
         self._age_action.setShortcut("Ctrl+Shift+A")
         self._age_action.toggled.connect(lambda _on: self._apply_age_colors())
         view_menu.addAction(self._age_action)
+
+        md_action = QAction("&Markdown Styling", self)
+        md_action.setCheckable(True)
+        md_action.setChecked(True)
+        md_action.toggled.connect(self._on_toggle_markdown_styling)
+        view_menu.addAction(md_action)
 
         view_menu.addSeparator()
 
@@ -267,6 +320,13 @@ class MainWindow(QMainWindow):
         # --- Library menu: search, gather, review (stages 5-6) ---
         library_menu = self.menuBar().addMenu("&Library")
 
+        import_folder_action = QAction("&Import .docx Folder…", self)
+        import_folder_action.setShortcut("Ctrl+Shift+I")
+        import_folder_action.triggered.connect(self._on_import_folder)
+        library_menu.addAction(import_folder_action)
+
+        library_menu.addSeparator()
+
         search_action = QAction("&Search Library…", self)
         search_action.setShortcut("Ctrl+Shift+F")
         search_action.triggered.connect(self._on_search)
@@ -276,6 +336,11 @@ class MainWindow(QMainWindow):
         gather_action.setShortcut("Ctrl+Shift+G")
         gather_action.triggered.connect(self._on_gather_tray)
         library_menu.addAction(gather_action)
+
+        verses_action = QAction("Documents Sharing &Verses…", self)
+        verses_action.setShortcut("Ctrl+Shift+V")
+        verses_action.triggered.connect(self._on_shared_verses)
+        library_menu.addAction(verses_action)
 
         library_menu.addSeparator()
 
@@ -308,6 +373,64 @@ class MainWindow(QMainWindow):
         restore_action.setShortcut("Ctrl+R")
         restore_action.triggered.connect(self._on_restore)
         history_menu.addAction(restore_action)
+
+    def _build_toolbar(self) -> None:
+        """The Help menu (after History): Help (F1) and Settings.
+        These used to be toolbar buttons in the top-right corner as well,
+        but the duplication was clutter — the menu is enough."""
+        help_action = QAction("WordVault &Help", self)
+        help_action.setShortcut("F1")
+        help_action.setToolTip("How WordVault works — the concept and the use (F1)")
+        help_action.triggered.connect(self._on_help)
+
+        settings_action = QAction("&Settings…", self)
+        settings_action.setToolTip(
+            "Auto-save pause, font size, and library encryption"
+        )
+        settings_action.triggered.connect(self._on_settings)
+
+        help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction(help_action)
+        help_menu.addAction(settings_action)
+
+    def _on_help(self) -> None:
+        from wordvault.editor.help_dialog import HelpDialog
+
+        HelpDialog(self).exec()
+
+    def _on_settings(self) -> None:
+        """Open Settings; apply and persist whatever was chosen."""
+        from PyQt6.QtWidgets import QDialog
+
+        from wordvault.editor.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(
+            self,
+            encrypted=self._store.is_encrypted,
+            idle_seconds=max(1, self._editor.idle_ms() // 1000),
+            font_size=self._editor.font().pointSize(),
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Everyday knobs: apply now, remember for next start.
+        self._editor.set_idle_ms(dialog.idle_seconds * 1000)
+        self._editor.set_font_point_size(dialog.font_size)
+        self._settings.setValue("idle_ms", dialog.idle_seconds * 1000)
+        self._settings.setValue("font_pt", dialog.font_size)
+
+        # Encryption transitions (the dialog already validated the
+        # matched passphrase pair when enabling).
+        if dialog.wants_encryption and not self._store.is_encrypted:
+            self._do_encrypt(dialog.passphrase)
+        elif not dialog.wants_encryption and self._store.is_encrypted:
+            answer = QMessageBox.question(
+                self, "Remove Encryption",
+                "The library will be stored UNENCRYPTED on disk again. "
+                "Continue?",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._do_decrypt()
 
     def _build_status_bar(self) -> None:
         """Three permanent labels: document/revisions, words, last save.
@@ -542,6 +665,139 @@ class MainWindow(QMainWindow):
         self._saved_label.setText("restored " + datetime.now().strftime("%H:%M:%S"))
         self._go_live()
 
+    def _on_import_folder(self) -> None:
+        """Library ▸ Import .docx Folder: run the ingest pipeline right
+        from the editor — one place for everything.
+
+        Incremental by design: files already in the library are skipped,
+        so pointing this at the same folder after adding a new
+        subdirectory imports just the new files."""
+        from PyQt6.QtWidgets import QApplication, QFileDialog, QProgressDialog
+
+        try:
+            import docx  # noqa: F401 — the importer needs python-docx
+        except ImportError:
+            QMessageBox.warning(
+                self, "Import",
+                "The importer needs the python-docx package.\n"
+                "Install it with:  pip install python-docx"
+            )
+            return
+
+        start_dir = str(self._settings.value(
+            "ingest_dir", str(Path.home() / "Documents")
+        ))
+        folder = QFileDialog.getExistingDirectory(
+            self, "Import .docx Folder (searched recursively)", start_dir
+        )
+        if not folder:
+            return
+        self._settings.setValue("ingest_dir", folder)
+
+        # Optional archive: keep a copy of every file that becomes a
+        # document, so the database's sources are gathered in one place.
+        archive_dir = Path.home() / ".wordvault" / "ingested_originals"
+        keep_copies = QMessageBox.question(
+            self, "Import",
+            "Keep a copy of each imported file in the archive folder?\n\n"
+            f"{archive_dir}\n\n"
+            "(Files are named '<document id> - <filename>' so the copy "
+            "matching any document is easy to find.)",
+        ) == QMessageBox.StandardButton.Yes
+
+        self._autosave()
+
+        # Indeterminate progress dialog; WindowModal blocks the editor so
+        # nothing can edit the database mid-import, while tick() keeps the
+        # dialog painting between the pipeline's progress messages.
+        progress = QProgressDialog("Scanning folder…", None, 0, 0, self)
+        progress.setWindowTitle("Importing")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+
+        from wordvault.ingest import Ingestor
+
+        def say(message: str) -> None:
+            progress.setLabelText(message)
+            QApplication.processEvents()
+
+        try:
+            stats = Ingestor(
+                self._store,
+                progress=say,
+                archive_dir=archive_dir if keep_copies else None,
+                tick=QApplication.processEvents,
+            ).ingest_folder(folder)
+        except Exception as exc:
+            progress.close()
+            QMessageBox.warning(self, "Import", str(exc))
+            return
+        progress.close()
+
+        self._reload_document_list()
+        message = stats.summary()
+        if stats.groups_proposed:
+            message += (
+                "\n\nProposed version groups await review "
+                "(Library ▸ Review Version Groups, Ctrl+G)."
+            )
+        QMessageBox.information(self, "Import finished", message)
+
+    def _on_shared_verses(self) -> None:
+        """Library ▸ Documents Sharing Verses: rank other documents by how
+        many Bible verses they cite in common with the open one — the
+        scripture-based identification signal."""
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+
+        if self._current_doc is None:
+            QMessageBox.information(
+                self, "Shared Verses", "Open a document first."
+            )
+            return
+        self._autosave()   # index the latest words before comparing
+        matches = self._store.documents_sharing_verses(self._current_doc.id)
+        if not matches:
+            QMessageBox.information(
+                self, "Shared Verses",
+                "No other document shares Bible citations with this one "
+                "(or this document cites no verses yet).\n\n"
+                "Tip: run tools/reindex_library.py once to index documents "
+                "imported before this feature existed."
+            )
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(
+            f"Documents sharing verses with “{self._current_doc.title}”"
+        )
+        dialog.resize(640, 460)
+        listing = QListWidget(dialog)
+        for doc, count in matches:
+            sample = ", ".join(
+                self._store.shared_verses(self._current_doc.id, doc.id)[:4]
+            )
+            item = QListWidgetItem(
+                f"{doc.title} — {count} shared verse"
+                + ("s" if count != 1 else "") + f"  ({sample}…)"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, doc.id)
+            listing.addItem(item)
+
+        def open_selected(item: QListWidgetItem) -> None:
+            dialog.accept()
+            self._open_document(item.data(Qt.ItemDataRole.UserRole))
+
+        listing.itemActivated.connect(open_selected)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Double-click a document to open it.", dialog))
+        layout.addWidget(listing)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     # ------------------------------------ writing environment (stage 7) ----
 
     def _apply_age_colors(self) -> None:
@@ -591,6 +847,16 @@ class MainWindow(QMainWindow):
                 selections.append(sel)
             row += 1
         self._editor.setExtraSelections(selections)
+
+    def _on_toggle_markdown_styling(self, enabled: bool) -> None:
+        """View ▸ Markdown Styling: attach/detach the highlighter.  The
+        text itself is identical either way — only the display changes."""
+        highlighter = self._editor.markdown_highlighter
+        if enabled:
+            highlighter.setDocument(self._editor.document())
+            highlighter.rehighlight()
+        else:
+            highlighter.setDocument(None)
 
     def _refresh_outline(self) -> None:
         """Rebuild the document map from the current text."""
@@ -654,6 +920,7 @@ class MainWindow(QMainWindow):
             revision_count=len(self._revisions),
             word_count=len(self._editor.toPlainText().split()),
             tags=[t.name for t in self._store.tags_for(doc.id)],
+            verse_count=len(self._store.verses_for(doc.id)),
         )
 
     def _refresh_position(self) -> None:
@@ -742,8 +1009,13 @@ class MainWindow(QMainWindow):
             f"({info.revisions} revisions) to {Path(path).name}.", 8000
         )
 
-    def _on_restore(self) -> None:
-        """File ▸ Restore: decrypt, show what is inside, confirm, swap in."""
+    def _on_restore_library(self) -> None:
+        """File ▸ Restore: decrypt, show what is inside, confirm, swap in.
+
+        NOTE the name: the timeline's revision-restore is _on_restore().
+        These two once shared a name, and Python silently kept only the
+        later definition — the timeline button opened this file dialog.
+        Distinct names, and a test now guards against regressions."""
         from PyQt6.QtWidgets import QFileDialog
 
         from wordvault.storage.backup import read_backup, restore_backup
@@ -810,9 +1082,9 @@ class MainWindow(QMainWindow):
         self._decrypt_action.setEnabled(encrypted)
 
     def _on_encrypt_library(self) -> None:
-        """File ▸ Encrypt Library: plaintext -> SQLCipher, in place."""
-        from wordvault.storage.encryption import encrypt_library, swap_in
-
+        """File ▸ Encrypt Library: warn, ask the passphrase, encrypt.
+        (The Settings dialog reaches _do_encrypt directly — its checkbox
+        flow already collected and verified the passphrase.)"""
         answer = QMessageBox.question(
             self, "Encrypt Library",
             "The library file itself will be encrypted with a passphrase.\n"
@@ -824,6 +1096,11 @@ class MainWindow(QMainWindow):
         pw = self._ask_passphrase(confirm=True)
         if pw is None:
             return
+        self._do_encrypt(pw)
+
+    def _do_encrypt(self, pw: str) -> None:
+        """Plaintext -> SQLCipher, in place, never losing the original."""
+        from wordvault.storage.encryption import encrypt_library, swap_in
 
         self._autosave()
         self._store.close()
@@ -847,15 +1124,19 @@ class MainWindow(QMainWindow):
         )
 
     def _on_decrypt_library(self) -> None:
-        """File ▸ Remove Library Encryption: SQLCipher -> plaintext."""
-        from wordvault.storage.encryption import decrypt_library, swap_in
-
+        """File ▸ Remove Library Encryption: confirm, then decrypt."""
         answer = QMessageBox.question(
             self, "Remove Encryption",
             "The library will be stored UNENCRYPTED on disk again. Continue?",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        self._do_decrypt()
+
+    def _do_decrypt(self) -> None:
+        """SQLCipher -> plaintext, in place, never losing the original."""
+        from wordvault.storage.encryption import decrypt_library, swap_in
+
         self._autosave()
         self._store.close()
         tmp = self._library_path.with_name(self._library_path.name + ".tmp-plain")

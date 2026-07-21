@@ -222,8 +222,9 @@ class DocumentStore:
             "VALUES (?, ?, ?, ?, ?, ?)",
             (doc_id, created_utc or _utc_now(), kind, payload, parent_id, origin),
         )
-        # The FTS index mirrors current text; this save changed it.
+        # Derived indexes mirror current text; this save changed it.
         self._refresh_fts(doc_id, current_text=text)
+        self.refresh_scripture_index(doc_id, text=text)
         self._conn.commit()
         return self.get_revision(cur.lastrowid)
 
@@ -574,6 +575,97 @@ class DocumentStore:
             "DELETE FROM similarity_groups WHERE status = 'pending'"
         )
         self._conn.commit()
+
+    # -- scripture index -----------------------------------------------------
+
+    def refresh_scripture_index(self, doc_id: int, text: Optional[str] = None) -> int:
+        """Re-derive the verse index for one document from its current
+        text.  Called automatically by save_revision; also used by the
+        reindex tool to backfill documents ingested before this feature.
+        Returns the number of indexed verse rows."""
+        from wordvault.storage.scripture import parse_references
+
+        if text is None:
+            text = self.current_text(doc_id)
+        rows: set[tuple[str, int, int]] = set()
+        for ref in parse_references(text):
+            rows.update(ref.verses())
+
+        self._conn.execute(
+            "DELETE FROM scripture_refs WHERE doc_id = ?", (doc_id,)
+        )
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO scripture_refs (doc_id, book, chapter, verse) "
+            "VALUES (?, ?, ?, ?)",
+            [(doc_id, b, c, v) for b, c, v in rows],
+        )
+        # No commit here: save_revision commits; standalone callers commit
+        # through the public wrapper below.
+        return len(rows)
+
+    def reindex_scripture(self, doc_id: int) -> int:
+        """Public standalone refresh (commits)."""
+        count = self.refresh_scripture_index(doc_id)
+        self._conn.commit()
+        return count
+
+    def verses_for(self, doc_id: int) -> list[str]:
+        """Every verse a document cites, formatted, in canonical order."""
+        rows = self._conn.execute(
+            "SELECT book, chapter, verse FROM scripture_refs "
+            "WHERE doc_id = ? ORDER BY book, chapter, verse",
+            (doc_id,),
+        ).fetchall()
+        return [f"{r['book']} {r['chapter']}:{r['verse']}" for r in rows]
+
+    def documents_citing(self, book: str, chapter: int,
+                         verse: Optional[int] = None) -> list[Document]:
+        """All documents citing a verse (or any verse of a chapter)."""
+        if verse is None:
+            rows = self._conn.execute(
+                "SELECT DISTINCT d.* FROM documents d "
+                "JOIN scripture_refs s ON s.doc_id = d.id "
+                "WHERE s.book = ? AND s.chapter = ? "
+                "ORDER BY d.created_utc, d.id",
+                (book, chapter),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT DISTINCT d.* FROM documents d "
+                "JOIN scripture_refs s ON s.doc_id = d.id "
+                "WHERE s.book = ? AND s.chapter = ? AND s.verse = ? "
+                "ORDER BY d.created_utc, d.id",
+                (book, chapter, verse),
+            ).fetchall()
+        return [self._doc_from_row(r) for r in rows]
+
+    def documents_sharing_verses(
+        self, doc_id: int, limit: int = 30
+    ) -> list[tuple[Document, int]]:
+        """Documents ranked by how many cited verses they share with
+        `doc_id` — the verse-based identification signal."""
+        rows = self._conn.execute(
+            "SELECT s2.doc_id AS other_id, COUNT(*) AS shared "
+            "FROM scripture_refs s1 "
+            "JOIN scripture_refs s2 ON s1.book = s2.book "
+            "  AND s1.chapter = s2.chapter AND s1.verse = s2.verse "
+            "WHERE s1.doc_id = ? AND s2.doc_id != ? "
+            "GROUP BY s2.doc_id ORDER BY shared DESC, s2.doc_id LIMIT ?",
+            (doc_id, doc_id, limit),
+        ).fetchall()
+        return [(self.get_document(r["other_id"]), r["shared"]) for r in rows]
+
+    def shared_verses(self, doc_a: int, doc_b: int) -> list[str]:
+        """The specific verses two documents both cite, formatted."""
+        rows = self._conn.execute(
+            "SELECT s1.book, s1.chapter, s1.verse FROM scripture_refs s1 "
+            "JOIN scripture_refs s2 ON s1.book = s2.book "
+            "  AND s1.chapter = s2.chapter AND s1.verse = s2.verse "
+            "WHERE s1.doc_id = ? AND s2.doc_id = ? "
+            "ORDER BY s1.book, s1.chapter, s1.verse",
+            (doc_a, doc_b),
+        ).fetchall()
+        return [f"{r['book']} {r['chapter']}:{r['verse']}" for r in rows]
 
     # -- gather tray (DESIGN.md section 8: mark and gather) ------------------
 

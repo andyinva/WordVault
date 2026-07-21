@@ -14,7 +14,7 @@ import pytest
 # Must be set before Qt is imported anywhere in the process.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-PyQt6 = pytest.importorskip("PyQt6")
+PyQt6 = pytest.importorskip("PyQt6.QtWidgets", exc_type=ImportError)
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 

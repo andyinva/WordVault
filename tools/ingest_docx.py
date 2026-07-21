@@ -66,6 +66,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="ingest at most N new files (a trial run; re-run without it to continue)",
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="extract pure plain text (default translates Word headings, "
+        "bold/italic, lists and quotes into Markdown)",
+    )
+    parser.add_argument(
+        "--archive",
+        metavar="DIR",
+        default=None,
+        help="also copy every file that becomes a document into DIR, "
+        "named '<doc-id> - <filename>'",
+    )
     args = parser.parse_args(argv)
 
     source = Path(args.source)
@@ -77,9 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Source:   {source}")
 
     with DocumentStore(library) as store:
-        stats = Ingestor(store, threshold=args.threshold, progress=print).ingest_folder(
-            source, limit=args.limit
-        )
+        stats = Ingestor(
+            store, threshold=args.threshold, progress=print,
+            markdown=not args.plain, archive_dir=args.archive,
+        ).ingest_folder(source, limit=args.limit)
 
     print()
     print(stats.summary())

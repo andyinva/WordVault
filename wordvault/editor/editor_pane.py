@@ -14,9 +14,13 @@ revision system covers everything beyond the session.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
+import re
+
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QTextCursor
 from PyQt6.QtWidgets import QPlainTextEdit
+
+from wordvault.editor.markdown_highlighter import MarkdownHighlighter
 
 
 class EditorPane(QPlainTextEdit):
@@ -51,6 +55,12 @@ class EditorPane(QPlainTextEdit):
 
         self.textChanged.connect(self._on_text_changed)
 
+        # Live Markdown styling: the text stays plain; the display honors
+        # the conventions (headings larger, **bold** bold, markers dimmed).
+        self.markdown_highlighter = MarkdownHighlighter(
+            self.document(), base_point_size=lambda: self.font().pointSize()
+        )
+
     # -- public API ---------------------------------------------------------
 
     def set_text_quietly(self, text: str) -> None:
@@ -67,6 +77,133 @@ class EditorPane(QPlainTextEdit):
         """Cancel a pending pause signal (e.g. the document was just saved
         by some other trigger, so the timer's save would be redundant)."""
         self._idle_timer.stop()
+
+    # -- settings knobs -----------------------------------------------------
+
+    def idle_ms(self) -> int:
+        """Current auto-save pause in milliseconds."""
+        return self._idle_timer.interval()
+
+    def set_idle_ms(self, ms: int) -> None:
+        """Change how long a typing silence must last to trigger a save."""
+        self._idle_timer.setInterval(max(500, ms))
+
+    def set_font_point_size(self, points: int) -> None:
+        font = self.font()
+        font.setPointSize(points)
+        self.setFont(font)
+        # Heading sizes are relative to the base font — restyle.
+        self.markdown_highlighter.rehighlight()
+
+    # -- Markdown editing commands (Edit menu / shortcuts) ------------------
+    #
+    # All of these edit the PLAIN text — they type the Markdown characters
+    # the author could type by hand.  Each command is one undo step.
+
+    def toggle_inline_marks(self, marker: str) -> None:
+        """Wrap the selection (or the word under the cursor) in `marker`
+        — "**" for bold, "*" for italic — or unwrap it if already wrapped."""
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+        text = cursor.selectedText().replace(" ", "\n")
+        if not text.strip():
+            return
+
+        if (text.startswith(marker) and text.endswith(marker)
+                and len(text) >= 2 * len(marker) + 1):
+            new = text[len(marker):-len(marker)]        # unwrap
+        else:
+            # Markers must hug the words: keep surrounding spaces outside.
+            lead = text[: len(text) - len(text.lstrip())]
+            trail = text[len(text.rstrip()):]
+            new = f"{lead}{marker}{text.strip()}{marker}{trail}"
+
+        start = cursor.selectionStart()
+        cursor.beginEditBlock()
+        cursor.insertText(new)
+        cursor.endEditBlock()
+        # Keep the changed text selected so the command can be re-toggled.
+        cursor.setPosition(start)
+        cursor.setPosition(start + len(new), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
+    def set_heading_level(self, level: int) -> None:
+        """Make the current line a heading of `level` (1-6); 0 removes
+        any heading marks.  Repeating the same level also removes them."""
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock,
+                            QTextCursor.MoveMode.KeepAnchor)
+        line = cursor.selectedText()
+        m = re.match(r"^(#{1,6})\s+", line)
+        bare = line[m.end():] if m else line
+        current = len(m.group(1)) if m else 0
+
+        if level == 0 or level == current:
+            new = bare                        # remove / toggle off
+        else:
+            new = "#" * level + " " + bare
+        cursor.beginEditBlock()
+        cursor.insertText(new)
+        cursor.endEditBlock()
+
+    def toggle_line_prefix(self, prefix: str) -> None:
+        """Add `prefix` ("- " bullet, "> " quote) to every selected line,
+        or remove it if every selected line already has it."""
+        cursor = self.textCursor()
+        doc = self.document()
+        first = doc.findBlock(cursor.selectionStart()).blockNumber()
+        last = doc.findBlock(cursor.selectionEnd()).blockNumber()
+        lines = [doc.findBlockByNumber(n).text() for n in range(first, last + 1)]
+
+        removing = all(l.startswith(prefix) for l in lines if l.strip())
+        new_lines = []
+        for line in lines:
+            if not line.strip():
+                new_lines.append(line)        # blank lines pass through
+            elif removing:
+                new_lines.append(line[len(prefix):])
+            elif not line.startswith(prefix):
+                new_lines.append(prefix + line)
+            else:
+                new_lines.append(line)
+
+        # Replace the whole span in one undo step.
+        span = QTextCursor(doc.findBlockByNumber(first))
+        end_block = doc.findBlockByNumber(last)
+        span.setPosition(end_block.position() + len(end_block.text()),
+                         QTextCursor.MoveMode.KeepAnchor)
+        span.beginEditBlock()
+        span.insertText("\n".join(new_lines))
+        span.endEditBlock()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """Smart list/quote continuation: Enter inside a "- ", "1. " or
+        "> " line starts the next line with the same marker; Enter on an
+        EMPTY marker line ends the list by clearing the marker."""
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) \
+                and not event.modifiers():
+            cursor = self.textCursor()
+            line = cursor.block().text()
+            m = re.match(r"^(\s*)(- |\* |(\d{1,3})\. |> )", line)
+            if m and not cursor.hasSelection():
+                content = line[m.end():]
+                if not content.strip() and cursor.atBlockEnd():
+                    # Empty item: Enter means "done with this list".
+                    cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                    cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock,
+                                        QTextCursor.MoveMode.KeepAnchor)
+                    cursor.removeSelectedText()
+                    return
+                if cursor.atBlockEnd():
+                    prefix = m.group(0)
+                    if m.group(3):            # numbered: count upward
+                        prefix = f"{m.group(1)}{int(m.group(3)) + 1}. "
+                    super().keyPressEvent(event)
+                    self.textCursor().insertText(prefix)
+                    return
+        super().keyPressEvent(event)
 
     # -- focus (hoist) mode: show one section, hide the rest (stage 7) ------
 

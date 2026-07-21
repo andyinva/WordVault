@@ -22,11 +22,17 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Union
 
-from wordvault.ingest.extract import extract_text, file_dates_utc, long_path
+from wordvault.ingest.extract import (
+    extract_markdown,
+    extract_text,
+    file_dates_utc,
+    long_path,
+)
 from wordvault.ingest.similar import MinHasher, cluster
 from wordvault.storage.store import DocumentStore
 
@@ -45,6 +51,7 @@ class IngestStats:
     duplicates: int = 0      # exact-duplicate files collapsed to a note
     skipped_known: int = 0   # already ingested in a previous run (by path)
     empty: int = 0           # files with no extractable text
+    archived: int = 0        # source files copied into the archive folder
     errors: list = field(default_factory=list)   # (path, message)
     groups_proposed: int = 0  # version groups awaiting review
 
@@ -58,6 +65,8 @@ class IngestStats:
             f"Errors:               {len(self.errors)}",
             f"Version groups:       {self.groups_proposed} proposed for review",
         ]
+        if self.archived:
+            lines.insert(2, f"Archived copies:      {self.archived}")
         for path, msg in self.errors[:20]:
             lines.append(f"  ERROR {path}: {msg}")
         if len(self.errors) > 20:
@@ -73,6 +82,9 @@ class Ingestor:
         store: DocumentStore,
         threshold: float = 0.6,
         progress: Optional[Callable[[str], None]] = None,
+        markdown: bool = True,
+        archive_dir: Optional[Union[str, Path]] = None,
+        tick: Optional[Callable[[], None]] = None,
     ):
         """
         threshold — minimum estimated similarity (0-1) for two documents
@@ -80,10 +92,24 @@ class Ingestor:
                     Jaccard >= 0.6 by default).
         progress  — optional callback for status lines (the CLI passes
                     print; tests pass None).
+        markdown  — translate structural Word formatting (headings, bold,
+                    italics, lists, quotes) into Markdown while extracting
+                    (default).  False = pure plain text.
+        archive_dir — when given, every file that becomes a NEW document
+                    is also copied here, named "<doc-id> - <filename>",
+                    giving a flat folder holding a copy of exactly the
+                    files the database was built from.  A failed copy is
+                    logged as an error but never stops the import.
+        tick      — optional no-argument callback invoked once per file
+                    processed; the editor uses it to keep its progress
+                    dialog painting during a long import.
         """
         self._store = store
         self._threshold = threshold
         self._say = progress or (lambda msg: None)
+        self._extract = extract_markdown if markdown else extract_text
+        self._archive_dir = Path(archive_dir) if archive_dir else None
+        self._tick = tick or (lambda: None)
 
     # ------------------------------------------------------------- Phase A --
 
@@ -125,6 +151,7 @@ class Ingestor:
 
         for path in files:
             stats.files_seen += 1
+            self._tick()   # let a GUI progress dialog breathe
             path_str = str(path)
 
             if path_str in known_paths:
@@ -134,7 +161,7 @@ class Ingestor:
                 continue  # keep counting files_seen, ingest no more
 
             try:
-                text = extract_text(path)
+                text = self._extract(path)
             except Exception as exc:  # unreadable/corrupt file: log, move on
                 stats.errors.append((path_str, str(exc)))
                 continue
@@ -168,6 +195,19 @@ class Ingestor:
             known_hashes[digest] = doc.id
             known_paths.add(path_str)
             stats.ingested += 1
+
+            # Optional archive: a flat copy of every file that became a
+            # document, prefixed with its document id so names never clash.
+            if self._archive_dir is not None:
+                try:
+                    self._archive_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(
+                        long_path(path),
+                        self._archive_dir / f"{doc.id:05d} - {path.name}",
+                    )
+                    stats.archived += 1
+                except OSError as exc:
+                    stats.errors.append((path_str, f"archive copy failed: {exc}"))
 
             if stats.ingested % 100 == 0:
                 self._say(f"  ingested {stats.ingested} documents...")

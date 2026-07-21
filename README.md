@@ -40,9 +40,20 @@ can never lose your latest writing.
 
 ## Importing an existing .docx library
 
+Right in the editor: **Library ▸ Import .docx Folder…** (Ctrl+Shift+I)
+— pick a folder, watch the progress, read the report. The import is
+incremental (already-imported files are skipped), so after adding a new
+subdirectory just run it again on the same folder and only the new files
+come in. You can also choose to keep a copy of every imported file in an
+**archive folder** (`~/.wordvault/ingested_originals`), each named
+`<document id> - <filename>` so the source of any document is easy to
+find.
+
+The same importer as a command line, for scripting:
+
 ```
 pip install python-docx
-python tools/ingest_docx.py "C:\Users\Andrew Hopkins\Documents\DocxIndexSearch"
+python tools/ingest_docx.py "C:\path\to\essays" --archive "D:\IngestedOriginals"
 ```
 
 Every .docx becomes a document in the editor's library, timestamped with
@@ -56,6 +67,52 @@ Tips: start with `--limit 50` for a trial run; the importer is safe to
 re-run any time (already-ingested files are skipped, so an interrupted
 run just continues). `--threshold 0.5` proposes looser matches, `0.8`
 only near-identical ones.
+
+### The scripture index
+
+Every document's text is scanned for Bible references — "John 3:16",
+"1 Cor. 15:22", "Gen 1:1-5", "II Timothy 2:15" all count — and the cited
+verses are indexed automatically on every save. This gives the library a
+second identification signal beside text similarity: essays citing the
+same verses are about the same material even when the prose differs.
+
+**Library ▸ Documents Sharing Verses…** (Ctrl+Shift+V) ranks the other
+documents by how many citations they share with the open one, showing a
+sample of the shared verses; double-click to open. The Document Info
+panel shows how many verses the open document cites.
+
+Documents imported before this feature need one backfill pass:
+
+```
+python tools/reindex_library.py
+```
+
+### Markdown formatting from Word
+
+Documents remain plain text, but plain text can carry structure by
+convention — Markdown. The importer now translates the structural part
+of Word formatting as it extracts:
+
+| Word | Markdown |
+|---|---|
+| Heading 1–6, Title/Subtitle | `#` … `######` |
+| **bold**, *italic* runs | `**bold**`, `*italic*` |
+| List Bullet / List Number styles | `- item` / `1. item` |
+| Quote styles | `> quoted text` |
+
+Fonts, sizes, colors and margins are aesthetics, not structure, and are
+deliberately dropped — the future WordVault Formatter will map the
+Markdown back to Word styles for output. The outline pane already reads
+the `#` headings. To recover formatting for documents ingested earlier
+(their originals must still exist):
+
+```
+python tools/reindex_library.py --formatting
+```
+
+Each changed document gains one new revision; the plain version stays
+one step back in its history. (`--plain` on the ingest tool disables
+Markdown extraction if ever wanted.)
 
 ### Reviewing version groups
 
@@ -92,6 +149,17 @@ passages in marking order, each with a provenance record pointing back
 to exactly where it came from.
 
 ### The writing environment
+
+**Markdown styling and commands**: the stored text stays plain, but the
+editor displays the conventions nicely — headings larger and bold,
+`**bold**` shown bold, `*italic*` shown italic, quote and list markers
+tinted, the marker characters dimmed (View ▸ Markdown Styling to
+toggle). The Edit menu types the conventions for you: **Ctrl+B** bold,
+**Ctrl+I** italic, **Ctrl+1/2/3** heading levels (Ctrl+0 removes),
+**Ctrl+Shift+L** bullet list, **Ctrl+Shift+Q** quote — plus the standard
+Undo/Redo/Cut/Copy/Paste. Pressing Enter in a list or quote continues it
+(numbered lists count up); Enter on an empty item ends it. Pasting from
+Word keeps the words and drops the formatting automatically.
 
 **Color Text by Age** (View menu, Ctrl+Shift+A): older lines are tinted
 a muted blue-gray shading toward the normal text color for the newest —

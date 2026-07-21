@@ -6,6 +6,8 @@ same Ingestor the CLI uses.  Skipped automatically when python-docx is
 not installed (the rest of WordVault never requires it).
 """
 
+from pathlib import Path
+
 import pytest
 
 docx = pytest.importorskip("docx")
@@ -59,6 +61,46 @@ def test_extract_normalizes(tmp_path):
     assert normalize_text("a\r\nb\r") == "a\nb\n"
 
 
+def test_extract_markdown_carries_formatting(tmp_path):
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    d.add_paragraph("The Coming Kingdom", style="Heading 1")
+    d.add_paragraph("First Signs", style="Heading 2")
+    p = d.add_paragraph()
+    p.add_run("The word ")
+    p.add_run("kingdom").bold = True
+    p.add_run(" appears ")
+    run = p.add_run("often")
+    run.italic = True
+    p.add_run(" here.")
+    d.add_paragraph("a marked point", style="List Bullet")
+    path = tmp_path / "formatted.docx"
+    d.save(str(path))
+
+    text = extract_markdown(path)
+    assert "# The Coming Kingdom\n" in text
+    assert "## First Signs\n" in text
+    assert "The word **kingdom** appears *often* here." in text
+    assert "- a marked point\n" in text
+
+
+def test_extract_markdown_merges_split_runs(tmp_path):
+    # Word often splits one bold phrase into several runs; the extractor
+    # must merge them into ONE pair of markers.
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    p = d.add_paragraph()
+    for piece in ("all ", "of ", "this bold"):
+        r = p.add_run(piece)
+        r.bold = True
+    path = tmp_path / "runs.docx"
+    d.save(str(path))
+
+    assert extract_markdown(path).strip() == "**all of this bold**"
+
+
 def test_phase_a_ingests_and_collapses_duplicates(library):
     src, store = library
     stats = Ingestor(store).ingest_folder(src)
@@ -109,6 +151,35 @@ def test_limit_allows_trial_run(library):
     # Continuing without the limit picks up the rest.
     stats2 = Ingestor(store).ingest_folder(src)
     assert len(store.ingested_documents()) == 3
+
+
+def test_archive_copies_ingested_files(library, tmp_path):
+    src, store = library
+    archive = tmp_path / "originals"
+    ticks = []
+    stats = Ingestor(
+        store, archive_dir=archive, tick=lambda: ticks.append(1)
+    ).ingest_folder(src)
+
+    # One copy per NEW document (not for duplicates or empty files),
+    # named "<doc-id> - <filename>" so any document's source is findable.
+    assert stats.archived == stats.ingested == 3
+    copies = sorted(p.name for p in archive.iterdir())
+    assert len(copies) == 3
+    for doc in store.ingested_documents():
+        assert any(name == f"{doc.id:05d} - {Path(doc.original_path).name}"
+                   for name in copies)
+    # The tick callback fired for every file seen (GUI progress heartbeat).
+    assert len(ticks) == stats.files_seen
+
+
+def test_archive_skips_already_known_on_rerun(library, tmp_path):
+    src, store = library
+    archive = tmp_path / "originals"
+    Ingestor(store, archive_dir=archive).ingest_folder(src)
+    stats2 = Ingestor(store, archive_dir=archive).ingest_folder(src)
+    assert stats2.archived == 0                    # nothing new, no re-copy
+    assert len(list(archive.iterdir())) == 3
 
 
 def test_confirmed_groups_survive_rerun(library):

@@ -95,6 +95,20 @@ CREATE TABLE IF NOT EXISTS ingest_duplicates (
     mtime  TEXT
 );
 
+-- The scripture index: one row per Bible verse cited in a document's
+-- CURRENT text (derived data, refreshed on every save).  A second
+-- identification signal beside text similarity: essays citing the same
+-- verses are about the same material even when the prose differs.
+CREATE TABLE IF NOT EXISTS scripture_refs (
+    doc_id  INTEGER NOT NULL REFERENCES documents(id),
+    book    TEXT NOT NULL,
+    chapter INTEGER NOT NULL,
+    verse   INTEGER NOT NULL,
+    PRIMARY KEY (doc_id, book, chapter, verse)
+);
+CREATE INDEX IF NOT EXISTS idx_scripture_verse
+    ON scripture_refs(book, chapter, verse);
+
 -- The gather tray (DESIGN.md section 8, "mark and gather"): passages the
 -- author marked across documents, queued up to be gathered into a new
 -- document.  Persistent on purpose — marking can span many sittings.

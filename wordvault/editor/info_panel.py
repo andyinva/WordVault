@@ -43,6 +43,8 @@ class InfoPanel(QWidget):
         self._position.setWordWrap(True)
         self._tags = QLabel("—")
         self._tags.setWordWrap(True)
+        self._verses = QLabel("—")
+        self._verses.setWordWrap(True)
 
         edit_tags_btn = QPushButton("Edit tags…", self)
         edit_tags_btn.clicked.connect(self.edit_tags_requested)
@@ -56,6 +58,7 @@ class InfoPanel(QWidget):
         form.addRow("Words:", self._words)
         form.addRow("Position:", self._position)
         form.addRow("Tags:", self._tags)
+        form.addRow("Verses cited:", self._verses)
 
         outer = QVBoxLayout(self)
         outer.addLayout(form)
@@ -73,6 +76,7 @@ class InfoPanel(QWidget):
         revision_count: int,
         word_count: int,
         tags: list[str],
+        verse_count: int = 0,
     ) -> None:
         """Document-level facts (refreshed on open/save)."""
         self._title.setText(title)
@@ -82,6 +86,7 @@ class InfoPanel(QWidget):
         self._revisions.setText(str(revision_count))
         self._words.setText(f"{word_count:,}")
         self._tags.setText(", ".join(tags) if tags else "none")
+        self._verses.setText(str(verse_count) if verse_count else "none")
 
     def update_position(self, word_index: int, word_count: int, percent: int) -> None:
         """Cursor-level facts (refreshed as the cursor moves)."""
@@ -94,5 +99,6 @@ class InfoPanel(QWidget):
 
     def clear(self) -> None:
         for label in (self._title, self._chain, self._created, self._edited,
-                      self._revisions, self._words, self._position, self._tags):
+                      self._revisions, self._words, self._position, self._tags,
+                      self._verses):
             label.setText("—")

@@ -10,7 +10,7 @@ import pytest
 # Both modules live in the editor package and import PyQt6 at module
 # level (for their widget/color halves), so the whole test file skips
 # when PyQt6 is absent — the logic itself is display-free.
-pytest.importorskip("PyQt6")
+pytest.importorskip("PyQt6.QtWidgets", exc_type=ImportError)
 
 from wordvault.editor.age_colors import line_birth_indices  # noqa: E402
 from wordvault.editor.outline import parse_outline, section_bounds  # noqa: E402
