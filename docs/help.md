@@ -71,6 +71,12 @@ a confirmed version chain.
 
 ### Finding things
 
+**Ctrl+P** (Document ▸ Go to Document) opens a document by typing part
+of its title — the list narrows as you type, Enter opens the top match.
+**Ctrl+F** finds text within the current document: a slim bar appears
+under the editor, searching as you type; Enter jumps to the next match,
+Shift+Enter to the previous, Esc closes it.
+
 **Ctrl+Shift+F** searches every document in the library instantly —
 word, phrase, or pattern. Double-click a result to jump straight to it.
 To change wording everywhere, fill in the Replace field and click

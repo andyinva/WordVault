@@ -125,6 +125,16 @@ next sitting — nothing forces you to judge all groups at once, and your
 decisions survive re-runs of the importer. Linked later versions show a
 "↳" marker in the Library list.
 
+### The Document menu
+
+Everything about the *open* document in one place: **Go to Document…**
+(Ctrl+P, type-ahead over all titles), **Find in Document** (Ctrl+F,
+incremental find bar with wrap-around), **Rename**, **Edit Tags…**,
+**Previous/Next Version** (Ctrl+Alt+Left/Right walks a confirmed version
+chain), **Documents Sharing Verses…**, and **Export as .wvdoc…**. The
+Library menu keeps collection-wide actions; File keeps library-level
+operations (backup, restore, encryption).
+
 ### Searching the library
 
 **Library ▸ Search Library…** (Ctrl+Shift+F) searches every document's

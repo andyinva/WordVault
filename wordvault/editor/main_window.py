@@ -137,11 +137,17 @@ class MainWindow(QMainWindow):
         self._timeline.position_changed.connect(self._on_timeline_moved)
         self._timeline.restore_requested.connect(self._on_restore)
 
+        # Find-in-document bar (Ctrl+F), hidden until asked for.
+        from wordvault.editor.find_bar import FindBar
+
+        self._find_bar = FindBar(self._editor, self)
+
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._editor, stretch=1)
+        layout.addWidget(self._find_bar)
         layout.addWidget(self._timeline)
         self.setCentralWidget(container)
 
@@ -212,10 +218,7 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
-        export_action = QAction("&Export Document as .wvdoc…", self)
-        export_action.triggered.connect(self._on_export_wvdoc)
-        file_menu.addAction(export_action)
-
+        # (Export lives in the Document menu — it exports the OPEN document.)
         import_action = QAction("&Import .wvdoc…", self)
         import_action.triggered.connect(self._on_import_wvdoc)
         file_menu.addAction(import_action)
@@ -285,6 +288,52 @@ class MainWindow(QMainWindow):
         mark_action.triggered.connect(self._on_mark_for_gather)
         edit_menu.addAction(mark_action)
 
+        # --- Document menu: everything about the OPEN document ---
+        doc_menu = self.menuBar().addMenu("&Document")
+
+        goto_action = QAction("&Go to Document…", self)
+        goto_action.setShortcut("Ctrl+P")
+        goto_action.triggered.connect(self._on_quick_open)
+        doc_menu.addAction(goto_action)
+
+        find_action = QAction("&Find in Document", self)
+        find_action.setShortcut("Ctrl+F")
+        find_action.triggered.connect(lambda: self._find_bar.open_bar())
+        doc_menu.addAction(find_action)
+
+        doc_menu.addSeparator()
+
+        rename_action = QAction("&Rename Document…", self)
+        rename_action.triggered.connect(self._on_rename_document)
+        doc_menu.addAction(rename_action)
+
+        tags_action = QAction("Edit &Tags…", self)
+        tags_action.triggered.connect(self._on_edit_tags)
+        doc_menu.addAction(tags_action)
+
+        doc_menu.addSeparator()
+
+        prev_ver_action = QAction("&Previous Version", self)
+        prev_ver_action.setShortcut("Ctrl+Alt+Left")
+        prev_ver_action.triggered.connect(lambda: self._on_step_version(-1))
+        doc_menu.addAction(prev_ver_action)
+
+        next_ver_action = QAction("&Next Version", self)
+        next_ver_action.setShortcut("Ctrl+Alt+Right")
+        next_ver_action.triggered.connect(lambda: self._on_step_version(+1))
+        doc_menu.addAction(next_ver_action)
+
+        doc_menu.addSeparator()
+
+        verses_action = QAction("Documents Sharing &Verses…", self)
+        verses_action.setShortcut("Ctrl+Shift+V")
+        verses_action.triggered.connect(self._on_shared_verses)
+        doc_menu.addAction(verses_action)
+
+        export_action = QAction("&Export as .wvdoc…", self)
+        export_action.triggered.connect(self._on_export_wvdoc)
+        doc_menu.addAction(export_action)
+
         # --- View menu: age colors, focus mode, panels (stage 7) ---
         view_menu = self.menuBar().addMenu("&View")
 
@@ -336,13 +385,6 @@ class MainWindow(QMainWindow):
         gather_action.setShortcut("Ctrl+Shift+G")
         gather_action.triggered.connect(self._on_gather_tray)
         library_menu.addAction(gather_action)
-
-        verses_action = QAction("Documents Sharing &Verses…", self)
-        verses_action.setShortcut("Ctrl+Shift+V")
-        verses_action.triggered.connect(self._on_shared_verses)
-        library_menu.addAction(verses_action)
-
-        library_menu.addSeparator()
 
         review_action = QAction("&Review Version Groups…", self)
         review_action.setShortcut("Ctrl+G")
@@ -743,6 +785,63 @@ class MainWindow(QMainWindow):
                 "(Library ▸ Review Version Groups, Ctrl+G)."
             )
         QMessageBox.information(self, "Import finished", message)
+
+    # ---------------------------------------------- Document menu handlers --
+
+    def _on_quick_open(self) -> None:
+        """Ctrl+P: type-ahead chooser; open the picked document."""
+        from wordvault.editor.quick_open import QuickOpenDialog
+
+        dialog = QuickOpenDialog(self._store, self)
+        if dialog.exec() and dialog.selected_doc_id is not None:
+            if (self._current_doc is None
+                    or self._current_doc.id != dialog.selected_doc_id):
+                self._autosave()
+                self._open_document(dialog.selected_doc_id)
+
+    def _on_rename_document(self) -> None:
+        """Rename the open document (title is metadata, not history)."""
+        if self._current_doc is None:
+            QMessageBox.information(self, "Rename", "Open a document first.")
+            return
+        title, ok = QInputDialog.getText(
+            self, "Rename Document", "New title:",
+            text=self._current_doc.title,
+        )
+        if not ok or not title.strip() or title == self._current_doc.title:
+            return
+        self._store.rename_document(self._current_doc.id, title.strip())
+        self._current_doc = self._store.get_document(self._current_doc.id)
+        self._reload_document_list()
+        self._refresh_info()
+        self.statusBar().showMessage("Renamed.", 4000)
+
+    def _on_step_version(self, direction: int) -> None:
+        """Ctrl+Alt+Left/Right: open the previous/next draft in the
+        document's confirmed version chain."""
+        if self._current_doc is None:
+            return
+        chain = self._store.version_chain(self._current_doc.id)
+        if len(chain) < 2:
+            self.statusBar().showMessage(
+                "This document has no linked versions "
+                "(chains are made in Library ▸ Review Version Groups).", 6000
+            )
+            return
+        index = next(i for i, d in enumerate(chain)
+                     if d.id == self._current_doc.id)
+        target = index + direction
+        if not 0 <= target < len(chain):
+            self.statusBar().showMessage(
+                "Already at the " + ("oldest" if direction < 0 else "newest")
+                + " draft of this chain.", 4000
+            )
+            return
+        self._autosave()
+        self._open_document(chain[target].id)
+        self.statusBar().showMessage(
+            f"Draft {target + 1} of {len(chain)} in this chain.", 4000
+        )
 
     def _on_shared_verses(self) -> None:
         """Library ▸ Documents Sharing Verses: rank other documents by how
