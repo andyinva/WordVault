@@ -207,13 +207,20 @@ def test_close_document_resets_editor(window_with_sections):
 
 
 def test_line_number_toggle(window_with_sections):
+    # NOTE: MainWindow loads the REAL user's persisted QSettings, so the
+    # gutter may start on or off — assert the toggle from either state,
+    # and restore the user's preference afterwards.
     window, doc = window_with_sections
-    assert not window._editor.line_numbers_visible()
-    window._line_numbers_action.setChecked(True)
-    assert window._editor.line_numbers_visible()
-    assert window._editor.line_number_width() > 0
-    window._line_numbers_action.setChecked(False)
-    assert window._editor.line_number_width() == 0
+    initial = window._line_numbers_action.isChecked()
+    try:
+        window._line_numbers_action.setChecked(True)
+        assert window._editor.line_numbers_visible()
+        assert window._editor.line_number_width() > 0
+        window._line_numbers_action.setChecked(False)
+        assert not window._editor.line_numbers_visible()
+        assert window._editor.line_number_width() == 0
+    finally:
+        window._line_numbers_action.setChecked(initial)
 
 
 def test_library_info_panel_populates(window_with_sections):
@@ -231,11 +238,15 @@ def test_library_info_panel_populates(window_with_sections):
 
 def test_recent_menu_lists_opened_documents(window_with_sections):
     window, doc = window_with_sections
-    window._settings.setValue("recent_docs", [])   # isolate from real use
-    window._open_document(doc.id)
-    window._rebuild_recent_menu()
-    titles = [a.text() for a in window._recent_menu.actions()]
-    assert "Sections" in titles
+    saved = window._settings.value("recent_docs", [])  # the user's real list
+    try:
+        window._settings.setValue("recent_docs", [])   # isolate the test
+        window._open_document(doc.id)
+        window._rebuild_recent_menu()
+        titles = [a.text() for a in window._recent_menu.actions()]
+        assert "Sections" in titles
+    finally:
+        window._settings.setValue("recent_docs", saved)
 
 
 def test_tag_filter_narrows_library(window_with_sections):
