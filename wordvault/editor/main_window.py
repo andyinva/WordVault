@@ -125,6 +125,10 @@ class MainWindow(QMainWindow):
             self._line_numbers_action.setChecked(True)
         if self._settings.value("spelling", False, type=bool):
             self._spelling_action.setChecked(True)
+        self._autocorrect_action.setChecked(
+            self._settings.value("autocorrect", True, type=bool)
+        )
+        self._refresh_autocorrect()
 
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
@@ -137,7 +141,8 @@ class MainWindow(QMainWindow):
         self._editor.pause_detected.connect(self._autosave)
         self._editor.textChanged.connect(self._update_status)
         self._editor.cursorPositionChanged.connect(self._refresh_position)
-        self._editor.correction_made.connect(self._on_spelling_correction)
+        self._editor.correction_made.connect(self._on_suggestion_correction)
+        self._editor.autocorrected.connect(self._on_autocorrected)
 
         self._timeline = TimelineBar(self)
         self._timeline.position_changed.connect(self._on_timeline_moved)
@@ -367,6 +372,18 @@ class MainWindow(QMainWindow):
         self._spelling_action.setCheckable(True)
         self._spelling_action.toggled.connect(self._on_toggle_spelling)
         view_menu.addAction(self._spelling_action)
+
+        self._autocorrect_action = QAction("Auto-&Correct Repeated Fixes", self)
+        self._autocorrect_action.setCheckable(True)
+        self._autocorrect_action.setToolTip(
+            "A fix you make once is applied through the document and "
+            "repaired automatically when you type the same mistake again"
+        )
+        self._autocorrect_action.toggled.connect(
+            lambda on: (self._settings.setValue("autocorrect", on),
+                        self._refresh_autocorrect())
+        )
+        view_menu.addAction(self._autocorrect_action)
 
         view_menu.addSeparator()
 
@@ -938,7 +955,7 @@ class MainWindow(QMainWindow):
 
     def _on_spelling_correction(self, typed: str, corrected: str) -> None:
         """A misspelled word was fixed (menu click or hand edit): classify
-        and log it for the habits report."""
+        and log it for the habits report; teach the autocorrecter."""
         from wordvault.editor.spelling import classify_error
 
         kind, detail = classify_error(typed, corrected)
@@ -946,6 +963,59 @@ class MainWindow(QMainWindow):
             self._current_doc.id if self._current_doc else None,
             typed, corrected, kind, detail,
         )
+        self._refresh_autocorrect()
+
+    def _on_suggestion_correction(self, typed: str, corrected: str) -> None:
+        """A suggestion was clicked: log it, then — because rare words are
+        bursty and repeat — apply the same fix to every other occurrence
+        in the document (one undo step)."""
+        self._on_spelling_correction(typed, corrected)
+        if not self._autocorrect_action.isChecked():
+            return
+        from wordvault.editor.spelling import apply_correction_to_text
+
+        text = self._editor.toPlainText()
+        new_text, count = apply_correction_to_text(text, typed, corrected)
+        if count == 0:
+            return
+        # Replace as ONE undoable edit, keeping the cursor near its place.
+        cursor = self._editor.textCursor()
+        position = cursor.position()
+        whole = QTextCursor(self._editor.document())
+        whole.select(QTextCursor.SelectionType.Document)
+        whole.beginEditBlock()
+        whole.insertText(new_text)
+        whole.endEditBlock()
+        cursor.setPosition(min(position, len(new_text)))
+        self._editor.setTextCursor(cursor)
+        for _ in range(count):
+            self._store.log_spelling_fix(
+                self._current_doc.id if self._current_doc else None,
+                typed, corrected, "auto repeat", "",
+            )
+        self.statusBar().showMessage(
+            f"Also corrected {count} more “{typed}” in this document "
+            f"(Ctrl+Z undoes).", 7000,
+        )
+
+    def _on_autocorrected(self, typed: str, corrected: str) -> None:
+        """The editor repaired a learned typo as it was typed."""
+        self._store.log_spelling_fix(
+            self._current_doc.id if self._current_doc else None,
+            typed, corrected, "auto repeat", "",
+        )
+        self.statusBar().showMessage(
+            f"Auto-corrected “{typed}” → “{corrected}”.", 4000
+        )
+
+    def _refresh_autocorrect(self) -> None:
+        """Feed the editor the learned typo->fix pairs (or switch off)."""
+        if self._autocorrect_action.isChecked():
+            self._editor.set_autocorrect_lookup(
+                self._store.learned_corrections()
+            )
+        else:
+            self._editor.set_autocorrect_lookup(None)
 
     def _on_spelling_habits(self) -> None:
         """Help ▸ My Spelling Habits: the running mirror of error kinds."""

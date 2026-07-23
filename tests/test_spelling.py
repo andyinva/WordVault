@@ -82,6 +82,31 @@ def test_extract_corrections_finds_hand_fixes():
     assert extract_corrections(old2, new2, is_missp) == []
 
 
+def test_apply_correction_to_text():
+    from wordvault.editor.spelling import apply_correction_to_text
+
+    # Proper-noun correction (capitalized): used verbatim everywhere.
+    text = "cave of Machpela. The Machpela field, and machpela again.\n"
+    new, n = apply_correction_to_text(text, "Machpela", "Machpelah")
+    assert n == 3
+    assert new == ("cave of Machpelah. The Machpelah field, "
+                   "and Machpelah again.\n")
+
+    # Lowercase correction mirrors each occurrence's capitalization.
+    text2 = "Becase of this, becase of that.\n"
+    new2, n2 = apply_correction_to_text(text2, "becase", "because")
+    assert n2 == 2 and new2 == "Because of this, because of that.\n"
+
+    # Whole words only — no touching words that merely contain the typo.
+    text3 = "the ark embarked\n"
+    new3, n3 = apply_correction_to_text(text3, "ark", "arc")
+    assert n3 == 1 and new3 == "the arc embarked\n"
+
+    # Case-only differences are not corrections.
+    assert apply_correction_to_text("word Word\n", "word", "Word") == \
+        ("word Word\n", 0)
+
+
 def test_add_to_dictionary_sticks(spelling, tmp_path, monkeypatch):
     import wordvault.editor.spelling as mod
     monkeypatch.setattr(mod, "_USER_DICT", tmp_path / "user.txt")

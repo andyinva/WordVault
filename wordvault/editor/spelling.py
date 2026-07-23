@@ -196,6 +196,34 @@ def extract_corrections(old_text, new_text, is_misspelled):
     return fixes
 
 
+def apply_correction_to_text(text: str, typed: str, corrected: str):
+    """
+    Fix every other whole-word occurrence of a just-corrected misspelling
+    ("pages ahead" AND behind — the whole document).
+
+    Words are bursty: a rare word that appears once (a proper noun above
+    all) is very likely to appear again nearby, so one correction predicts
+    the need for more.  Case handling: a correction that is itself
+    capitalized (a proper noun like Machpelah) is used verbatim; a
+    lowercase correction mirrors each occurrence's capitalization.
+
+    Returns (new_text, replacements_made).
+    """
+    if typed.lower() == corrected.lower():
+        return text, 0
+    pattern = re.compile(rf"\b{re.escape(typed)}\b", re.IGNORECASE)
+
+    def repl(match: re.Match) -> str:
+        occurrence = match.group()
+        if corrected[:1].isupper():
+            return corrected                     # proper noun: verbatim
+        if occurrence[:1].isupper():
+            return corrected.capitalize()        # mirror sentence case
+        return corrected
+
+    return pattern.subn(repl, text)
+
+
 #: One shared instance — the dictionary load is not free, do it once.
 _instance: Optional[Spelling] = None
 

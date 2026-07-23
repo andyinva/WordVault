@@ -691,6 +691,18 @@ class DocumentStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def learned_corrections(self) -> dict[str, str]:
+        """typed (lower) -> most recent correction, from every fix the
+        author has made by hand or by suggestion.  Powers the as-you-type
+        auto-correction of repeated errors ('auto repeat' rows are the
+        OUTPUT of that feature, so they are excluded as sources)."""
+        rows = self._conn.execute(
+            "SELECT lower(typed) t, corrected, MAX(id) FROM spelling_log "
+            "WHERE kind != 'auto repeat' GROUP BY t"
+        ).fetchall()
+        return {r["t"]: r["corrected"] for r in rows
+                if r["t"] != r["corrected"].lower()}
+
     def spelling_summary(self) -> tuple[list[tuple[str, int]],
                                         list[tuple[str, str, int]]]:
         """(counts by error kind, most-repeated typed->corrected pairs)."""

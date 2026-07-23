@@ -132,6 +132,68 @@ def test_enter_on_empty_item_ends_the_list(pane):
     assert pane.toPlainText() == "- item\n"
 
 
+# -- as-you-type autocorrect -------------------------------------------------
+
+def press_key(pane, char):
+    pane.keyPressEvent(QKeyEvent(
+        QKeyEvent.Type.KeyPress, 0, Qt.KeyboardModifier.NoModifier, char
+    ))
+
+
+def test_autocorrect_repairs_learned_typo_on_space(pane):
+    fired = []
+    pane.autocorrected.connect(lambda t, c: fired.append((t, c)))
+    pane.set_autocorrect_lookup({"machpela": "Machpelah"})
+    pane.setPlainText("cave of machpela")
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    press_key(pane, " ")
+    assert pane.toPlainText().startswith("cave of Machpelah")
+    assert fired == [("machpela", "Machpelah")]
+
+
+def test_autocorrect_mirrors_case_for_lowercase_fix(pane):
+    pane.set_autocorrect_lookup({"becase": "because"})
+    pane.setPlainText("Becase")
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    press_key(pane, " ")
+    assert pane.toPlainText().startswith("Because")
+
+
+def test_autocorrect_leaves_unknown_words_alone(pane):
+    pane.set_autocorrect_lookup({"becase": "because"})
+    pane.setPlainText("beluga")
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    press_key(pane, " ")
+    assert pane.toPlainText().startswith("beluga")
+
+
+def test_autocorrect_disabled_when_lookup_none(pane):
+    pane.set_autocorrect_lookup(None)
+    pane.setPlainText("becase")
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    press_key(pane, " ")
+    assert pane.toPlainText().startswith("becase")
+
+
+def test_autocorrect_fires_before_smart_enter(pane):
+    # Enter both fixes the word AND continues the list.
+    pane.set_autocorrect_lookup({"becase": "because"})
+    pane.setPlainText("- becase")
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    press_enter(pane)
+    assert pane.toPlainText() == "- because\n- "
+
+
 # -- highlighter -------------------------------------------------------------
 
 def test_highlighter_styles_without_changing_text(pane):

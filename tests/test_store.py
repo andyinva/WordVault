@@ -202,6 +202,18 @@ def test_spelling_log_and_summary(store):
     assert recent[0]["typed"] == "seperate"       # newest first
 
 
+def test_learned_corrections(store):
+    store.log_spelling_fix(None, "Machpela", "Machpelah", "dropped letter", "h")
+    store.log_spelling_fix(None, "becase", "because", "dropped letter", "u")
+    # 'auto repeat' rows are outputs of autocorrect, never sources.
+    store.log_spelling_fix(None, "teh", "the", "auto repeat", "")
+
+    learned = store.learned_corrections()
+    assert learned["machpela"] == "Machpelah"
+    assert learned["becase"] == "because"
+    assert "teh" not in learned
+
+
 # -- search -----------------------------------------------------------------
 
 def test_search_current_finds_latest_text_only(store):

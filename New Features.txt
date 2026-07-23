@@ -1,4 +1,5 @@
 1. In the Library search results can you display the date last modified and size of the file. Have the same info in the "Go To Document" search as well. Also can you add the ability to sort by clicking on the header "Name", "Date", "Size" of each listing of found items. Clicking on a header again should reverse the sort. 
+2. Have the ability to turn on and off Library info panel under the "View" dropdown. 
 
 
 

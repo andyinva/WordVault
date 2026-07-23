@@ -50,6 +50,10 @@ class EditorPane(QPlainTextEdit):
     #: from the context menu; MainWindow logs it for the habits report.
     correction_made = pyqtSignal(str, str)
 
+    #: (typed, corrected) — a previously-learned fix was applied
+    #: automatically as the author typed the same mistake again.
+    autocorrected = pyqtSignal(str, str)
+
     #: How long a silence counts as "a pause" (DESIGN.md: ~3 seconds).
     IDLE_MS = 3000
 
@@ -80,6 +84,10 @@ class EditorPane(QPlainTextEdit):
         self.markdown_highlighter = MarkdownHighlighter(
             self.document(), base_point_size=lambda: self.font().pointSize()
         )
+
+        # Learned corrections for as-you-type repair of repeated errors:
+        # dict typed(lower) -> corrected, or None = feature off.
+        self._autocorrect_lookup = None
 
         # Optional line-number gutter (View menu toggle).
         self._line_numbers_on = False
@@ -205,12 +213,50 @@ class EditorPane(QPlainTextEdit):
         span.insertText("\n".join(new_lines))
         span.endEditBlock()
 
+    def set_autocorrect_lookup(self, lookup) -> None:
+        """dict typed(lower) -> corrected, or None to disable."""
+        self._autocorrect_lookup = lookup
+
+    def _maybe_autocorrect(self) -> None:
+        """A word was just completed (space/punct/Enter): if it matches a
+        learned misspelling, repair it in place — bursty words repeat, and
+        so do their errors."""
+        if not self._autocorrect_lookup or self.isReadOnly():
+            return
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return
+        before = cursor.block().text()[:cursor.positionInBlock()]
+        m = re.search(r"[A-Za-z][A-Za-z']*$", before)
+        if not m:
+            return
+        word = m.group()
+        corrected = self._autocorrect_lookup.get(word.lower())
+        if not corrected or corrected.lower() == word.lower():
+            return
+        if not corrected[:1].isupper() and word[:1].isupper():
+            corrected = corrected.capitalize()   # mirror sentence case
+        fix = QTextCursor(self.document())
+        fix.setPosition(cursor.position() - len(word))
+        fix.setPosition(cursor.position(), QTextCursor.MoveMode.KeepAnchor)
+        fix.insertText(corrected)
+        self.autocorrected.emit(word, corrected)
+
+    keyPressEvent_completers = " .,;:!?\"”)"
+
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         """Smart list/quote continuation: Enter inside a "- ", "1. " or
         "> " line starts the next line with the same marker; Enter on an
-        EMPTY marker line ends the list by clearing the marker."""
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) \
-                and not event.modifiers():
+        EMPTY marker line ends the list by clearing the marker.
+
+        Also the auto-correction hook: finishing a word (space,
+        punctuation, or Enter) first repairs it if it is a learned typo."""
+        is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+        if is_enter or (event.text() and
+                        event.text() in self.keyPressEvent_completers):
+            self._maybe_autocorrect()
+
+        if is_enter and not event.modifiers():
             cursor = self.textCursor()
             line = cursor.block().text()
             m = re.match(r"^(\s*)(- |\* |(\d{1,3})\. |> )", line)
