@@ -62,7 +62,7 @@ from PyQt6.QtWidgets import (
 
 from wordvault.editor.age_colors import age_color, age_rank, line_birth_indices
 from wordvault.editor.editor_pane import EditorPane
-from wordvault.editor.info_panel import InfoPanel
+from wordvault.editor.info_panel import InfoPanel, LibraryInfoPanel
 from wordvault.editor.outline import OutlinePane, section_bounds
 from wordvault.editor.timeline import TimelineBar
 from wordvault.models import Document, Revision
@@ -120,6 +120,11 @@ class MainWindow(QMainWindow):
         self._editor.set_font_point_size(
             int(self._settings.value("font_pt", 12))
         )
+        # Restore the persisted View toggles.
+        if self._settings.value("line_numbers", False, type=bool):
+            self._line_numbers_action.setChecked(True)
+        if self._settings.value("spelling", False, type=bool):
+            self._spelling_action.setChecked(True)
 
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
@@ -132,6 +137,7 @@ class MainWindow(QMainWindow):
         self._editor.pause_detected.connect(self._autosave)
         self._editor.textChanged.connect(self._update_status)
         self._editor.cursorPositionChanged.connect(self._refresh_position)
+        self._editor.correction_made.connect(self._on_spelling_correction)
 
         self._timeline = TimelineBar(self)
         self._timeline.position_changed.connect(self._on_timeline_moved)
@@ -192,6 +198,14 @@ class MainWindow(QMainWindow):
         self._info_dock.setWidget(self._info_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._info_dock)
 
+        # Library-wide facts, below the document panel.
+        self._library_panel = LibraryInfoPanel(self)
+        self._library_dock = QDockWidget("Library Info", self)
+        self._library_dock.setWidget(self._library_panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self._library_dock)
+        self._refresh_library_info()
+
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
 
@@ -205,39 +219,31 @@ class MainWindow(QMainWindow):
         save_action.triggered.connect(self._autosave)
         file_menu.addAction(save_action)
 
-        file_menu.addSeparator()
+        close_action = QAction("&Close Document", self)
+        close_action.setShortcut("Ctrl+W")
+        close_action.triggered.connect(self._on_close_document)
+        file_menu.addAction(close_action)
 
-        # --- encrypted backup & portable documents (stage 8) ---
-        backup_action = QAction("&Back Up Library…", self)
-        backup_action.triggered.connect(self._on_backup)
-        file_menu.addAction(backup_action)
-
-        restore_action = QAction("Rest&ore Library from Backup…", self)
-        restore_action.triggered.connect(self._on_restore_library)
-        file_menu.addAction(restore_action)
+        # Recently opened documents; rebuilt each time the menu opens.
+        self._recent_menu = file_menu.addMenu("&Recent")
+        self._recent_menu.aboutToShow.connect(self._rebuild_recent_menu)
 
         file_menu.addSeparator()
 
-        # (Export lives in the Document menu — it exports the OPEN document.)
         import_action = QAction("&Import .wvdoc…", self)
         import_action.triggered.connect(self._on_import_wvdoc)
         file_menu.addAction(import_action)
 
         file_menu.addSeparator()
 
-        # --- live-database encryption (stage 9) ---
-        self._encrypt_action = QAction("Encrypt &Library…", self)
-        self._encrypt_action.triggered.connect(self._on_encrypt_library)
-        file_menu.addAction(self._encrypt_action)
+        print_action = QAction("&Print Document…", self)
+        print_action.setShortcut("Ctrl+Shift+P")
+        print_action.triggered.connect(self._on_print)
+        file_menu.addAction(print_action)
 
-        self._change_pw_action = QAction("&Change Library Passphrase…", self)
-        self._change_pw_action.triggered.connect(self._on_change_passphrase)
-        file_menu.addAction(self._change_pw_action)
-
-        self._decrypt_action = QAction("Remove Library Encr&yption…", self)
-        self._decrypt_action.triggered.connect(self._on_decrypt_library)
-        file_menu.addAction(self._decrypt_action)
-        self._update_encryption_actions()
+        page_setup_action = QAction("Page Se&tup…", self)
+        page_setup_action.triggered.connect(self._on_page_setup)
+        file_menu.addAction(page_setup_action)
 
         file_menu.addSeparator()
 
@@ -349,6 +355,19 @@ class MainWindow(QMainWindow):
         md_action.toggled.connect(self._on_toggle_markdown_styling)
         view_menu.addAction(md_action)
 
+        self._line_numbers_action = QAction("Line &Numbers", self)
+        self._line_numbers_action.setCheckable(True)
+        self._line_numbers_action.toggled.connect(
+            lambda on: (self._editor.set_line_numbers_visible(on),
+                        self._settings.setValue("line_numbers", on))
+        )
+        view_menu.addAction(self._line_numbers_action)
+
+        self._spelling_action = QAction("Check &Spelling", self)
+        self._spelling_action.setCheckable(True)
+        self._spelling_action.toggled.connect(self._on_toggle_spelling)
+        view_menu.addAction(self._spelling_action)
+
         view_menu.addSeparator()
 
         focus_action = QAction("&Focus Current Section", self)
@@ -391,6 +410,33 @@ class MainWindow(QMainWindow):
         review_action.triggered.connect(self._on_review_groups)
         library_menu.addAction(review_action)
 
+        library_menu.addSeparator()
+
+        # --- library-level safety: backup, restore, encryption (moved
+        # here from File — they act on the LIBRARY, as the menu says) ---
+        backup_action = QAction("&Back Up Library…", self)
+        backup_action.triggered.connect(self._on_backup)
+        library_menu.addAction(backup_action)
+
+        restore_action = QAction("Rest&ore Library from Backup…", self)
+        restore_action.triggered.connect(self._on_restore_library)
+        library_menu.addAction(restore_action)
+
+        library_menu.addSeparator()
+
+        self._encrypt_action = QAction("&Encrypt Library…", self)
+        self._encrypt_action.triggered.connect(self._on_encrypt_library)
+        library_menu.addAction(self._encrypt_action)
+
+        self._change_pw_action = QAction("&Change Library Passphrase…", self)
+        self._change_pw_action.triggered.connect(self._on_change_passphrase)
+        library_menu.addAction(self._change_pw_action)
+
+        self._decrypt_action = QAction("Remove Library Encr&yption…", self)
+        self._decrypt_action.triggered.connect(self._on_decrypt_library)
+        library_menu.addAction(self._decrypt_action)
+        self._update_encryption_actions()
+
         # --- History menu: the time-travel keys (stage 3) ---
         history_menu = self.menuBar().addMenu("&History")
 
@@ -431,8 +477,15 @@ class MainWindow(QMainWindow):
         )
         settings_action.triggered.connect(self._on_settings)
 
+        habits_action = QAction("My Spelling Ha&bits…", self)
+        habits_action.setToolTip(
+            "What kinds of spelling fixes you make — a running mirror"
+        )
+        habits_action.triggered.connect(self._on_spelling_habits)
+
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(help_action)
+        help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
 
     def _on_help(self) -> None:
@@ -502,6 +555,10 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(prefix + doc.title)
             item.setData(Qt.ItemDataRole.UserRole, doc.id)
             self._doc_list.addItem(item)
+        # The list changing usually means the library changed too — keep
+        # the Library Info panel honest (guard: panel builds after dock).
+        if hasattr(self, "_library_panel"):
+            self._refresh_library_info()
 
     def _reload_tag_filter(self) -> None:
         """Rebuild the tag combo, keeping the current choice if it survives."""
@@ -628,6 +685,7 @@ class MainWindow(QMainWindow):
     def _open_document(self, doc_id: int) -> None:
         """Load a document's newest text into the editor, in live mode."""
         self._current_doc = self._store.get_document(doc_id)
+        self._record_recent(doc_id)   # feeds File ▸ Recent
         self._go_live()
         self._set_editor_enabled(True)
         self._editor.setFocus()
@@ -778,6 +836,7 @@ class MainWindow(QMainWindow):
         progress.close()
 
         self._reload_document_list()
+        self._refresh_library_info()
         message = stats.summary()
         if stats.groups_proposed:
             message += (
@@ -785,6 +844,178 @@ class MainWindow(QMainWindow):
                 "(Library ▸ Review Version Groups, Ctrl+G)."
             )
         QMessageBox.information(self, "Import finished", message)
+
+    # ------------------------------------------- File menu additions -------
+
+    def _on_close_document(self) -> None:
+        """Ctrl+W: save and put the editor back to 'nothing open'."""
+        if self._current_doc is None:
+            return
+        self._autosave()
+        self._current_doc = None
+        self._revisions = []
+        self._is_live = True
+        self._set_editor_enabled(False)
+        self._info_panel.clear()
+        self._outline.set_outline([])
+        self._timeline.set_range(0, 0)
+        self._update_status()
+
+    def _record_recent(self, doc_id: int) -> None:
+        """Move doc_id to the front of the persisted recents (max 10)."""
+        recent = [int(x) for x in self._settings.value("recent_docs", []) or []]
+        recent = [doc_id] + [d for d in recent if d != doc_id]
+        self._settings.setValue("recent_docs", [str(d) for d in recent[:10]])
+
+    def _rebuild_recent_menu(self) -> None:
+        """Fill File ▸ Recent when it opens (titles resolved fresh)."""
+        self._recent_menu.clear()
+        recent = [int(x) for x in self._settings.value("recent_docs", []) or []]
+        shown = 0
+        for doc_id in recent:
+            try:
+                doc = self._store.get_document(doc_id)
+            except KeyError:
+                continue  # e.g. a different library than last session
+            action = self._recent_menu.addAction(doc.title)
+            action.triggered.connect(
+                lambda _c, d=doc_id: (self._autosave(), self._open_document(d))
+            )
+            shown += 1
+        if not shown:
+            self._recent_menu.addAction("(no recent documents)").setEnabled(False)
+
+    def _ensure_printer(self):
+        """One QPrinter shared by Print and Page Setup, made on demand."""
+        from PyQt6.QtPrintSupport import QPrinter
+
+        if not hasattr(self, "_printer"):
+            self._printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        return self._printer
+
+    def _on_page_setup(self) -> None:
+        from PyQt6.QtPrintSupport import QPageSetupDialog
+
+        QPageSetupDialog(self._ensure_printer(), self).exec()
+
+    def _on_print(self) -> None:
+        """File ▸ Print: the open document to a local printer (or PDF)."""
+        from PyQt6.QtPrintSupport import QPrintDialog
+
+        if self._current_doc is None:
+            QMessageBox.information(self, "Print", "Open a document first.")
+            return
+        self._autosave()
+        printer = self._ensure_printer()
+        printer.setDocName(self._current_doc.title)
+        dialog = QPrintDialog(printer, self)
+        if dialog.exec():
+            # Prints the text as displayed (Markdown styling included);
+            # QTextDocument handles pagination and margins from Page Setup.
+            self._editor.document().print(printer)
+            self.statusBar().showMessage("Sent to printer.", 5000)
+
+    # ----------------------------------------------- View menu additions ---
+
+    def _on_toggle_spelling(self, on: bool) -> None:
+        """View ▸ Check Spelling: squiggles + right-click suggestions."""
+        from wordvault.editor.spelling import get_spelling
+
+        if on and not get_spelling().is_available():
+            QMessageBox.information(
+                self, "Spelling",
+                "Spell checking needs the pyspellchecker package.\n"
+                "Install it with:  pip install pyspellchecker\n"
+                "then restart WordVault."
+            )
+            self._spelling_action.setChecked(False)
+            return
+        self._editor.markdown_highlighter.spelling_enabled = on
+        self._editor.markdown_highlighter.rehighlight()
+        self._settings.setValue("spelling", on)
+
+    # ------------------------------------------- spelling-habits watcher ---
+
+    def _on_spelling_correction(self, typed: str, corrected: str) -> None:
+        """A misspelled word was fixed (menu click or hand edit): classify
+        and log it for the habits report."""
+        from wordvault.editor.spelling import classify_error
+
+        kind, detail = classify_error(typed, corrected)
+        self._store.log_spelling_fix(
+            self._current_doc.id if self._current_doc else None,
+            typed, corrected, kind, detail,
+        )
+
+    def _on_spelling_habits(self) -> None:
+        """Help ▸ My Spelling Habits: the running mirror of error kinds."""
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser
+
+        kinds, pairs = self._store.spelling_summary()
+        recent = self._store.spelling_history(15)
+
+        lines = ["# My Spelling Habits\n"]
+        if not kinds:
+            lines.append(
+                "No corrections recorded yet. Turn on **View ▸ Check "
+                "Spelling** and fix flagged words — by right-click "
+                "suggestion or by hand — and each fix is noted here."
+            )
+        else:
+            total = sum(n for _k, n in kinds)
+            lines.append(f"**{total} corrections observed.** By error kind:\n")
+            for kind, n in kinds:
+                lines.append(f"- **{kind}** — {n} ({100 * n // total}%)")
+            if pairs:
+                lines.append("\n**Most-repeated fixes:**\n")
+                for t, c, n in pairs:
+                    times = f"{n}×" if n > 1 else "once"
+                    lines.append(f"- {t} → {c} ({times})")
+            if recent:
+                lines.append("\n**Recent:**\n")
+                for r in recent:
+                    lines.append(
+                        f"- {r['created_utc'][:10]}: {r['typed']} → "
+                        f"{r['corrected']} ({r['kind']})"
+                    )
+            lines.append(
+                "\n*Vowel swaps and dropped silent letters are 'writing "
+                "by ear' — seeing them here is what builds the habit of "
+                "catching them.*"
+            )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("My Spelling Habits")
+        dialog.resize(560, 520)
+        viewer = QTextBrowser(dialog)
+        viewer.setMarkdown("\n".join(lines))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(viewer)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    # ------------------------------------------------ library info panel ---
+
+    def _refresh_library_info(self) -> None:
+        """Push library-wide facts into the Library Info panel."""
+        docs = self._store.list_documents()
+        try:
+            size = self._library_path.stat().st_size
+        except OSError:
+            size = 0
+        oldest = (_local_time(docs[0].created_utc)[:10] if docs else "—")
+        self._library_panel.update_info(
+            documents=len(docs),
+            revisions=self._store.revision_count(),
+            size_bytes=size,
+            oldest=oldest,
+            encrypted=self._store.is_encrypted,
+            file_name=self._library_path.name,
+            location=str(self._library_path.parent),
+        )
 
     # ---------------------------------------------- Document menu handlers --
 
@@ -1170,6 +1401,7 @@ class MainWindow(QMainWindow):
         self._outline.set_outline([])
         self._update_status()
         self._update_encryption_actions()
+        self._refresh_library_info()
 
     # ------------------------------ live-database encryption (stage 9) -----
 
@@ -1331,8 +1563,24 @@ class MainWindow(QMainWindow):
         """Save the editor's text as a revision (identical states skipped).
         Only ever called in live mode; returns the new revision or None."""
         assert self._current_doc is not None
+        new_text = self._editor.toPlainText()
+
+        # Spelling-habits watcher: with checking ON, hand-made fixes of
+        # misspelled words are mined from the edit before it is saved.
+        if self._editor.markdown_highlighter.spelling_enabled:
+            from wordvault.editor.spelling import (
+                extract_corrections,
+                get_spelling,
+            )
+            spelling = get_spelling()
+            if spelling.is_available():
+                old_text = self._store.current_text(self._current_doc.id)
+                for typed, corrected in extract_corrections(
+                        old_text, new_text, spelling.is_misspelled):
+                    self._on_spelling_correction(typed, corrected)
+
         rev = self._store.save_revision(
-            self._current_doc.id, self._editor.toPlainText(), origin="typing"
+            self._current_doc.id, new_text, origin="typing"
         )
         self._editor.stop_idle_timer()  # a pending pause-save is now redundant
         if rev is not None:
@@ -1356,6 +1604,7 @@ class MainWindow(QMainWindow):
             self._refresh_outline()
             self._refresh_info()
             self._apply_age_colors()
+            self._refresh_library_info()
         self._update_status()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)

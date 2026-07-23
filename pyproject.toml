@@ -43,6 +43,8 @@ crypto = ["cryptography>=41"]
 # SQLCipher encryption of the live database (stage 9).
 # On Windows/macOS use:  pip install sqlcipher3-wheels
 encrypted-db = ["sqlcipher3-binary; sys_platform == 'linux'"]
+# Spell checking (View > Check Spelling):
+spelling = ["pyspellchecker>=0.8"]
 
 [tool.setuptools.packages.find]
 include = ["wordvault*"]

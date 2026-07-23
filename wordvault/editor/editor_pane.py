@@ -16,11 +16,27 @@ from __future__ import annotations
 
 import re
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QTextCursor
-from PyQt6.QtWidgets import QPlainTextEdit
+from PyQt6.QtCore import QRect, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QPainter, QTextCursor
+from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
 from wordvault.editor.markdown_highlighter import MarkdownHighlighter
+
+
+class _LineNumberArea(QWidget):
+    """The gutter widget; all logic lives in EditorPane (classic Qt
+    pattern for QPlainTextEdit line numbers)."""
+
+    def __init__(self, editor: "EditorPane"):
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self):  # noqa: N802 (Qt naming)
+        from PyQt6.QtCore import QSize
+        return QSize(self._editor.line_number_width(), 0)
+
+    def paintEvent(self, event):  # noqa: N802 (Qt naming)
+        self._editor.paint_line_numbers(event)
 
 
 class EditorPane(QPlainTextEdit):
@@ -29,6 +45,10 @@ class EditorPane(QPlainTextEdit):
     #: Emitted once, IDLE_MS after the last keystroke.  MainWindow connects
     #: this to its auto-save slot.
     pause_detected = pyqtSignal()
+
+    #: (typed, corrected) — the author accepted a spelling suggestion
+    #: from the context menu; MainWindow logs it for the habits report.
+    correction_made = pyqtSignal(str, str)
 
     #: How long a silence counts as "a pause" (DESIGN.md: ~3 seconds).
     IDLE_MS = 3000
@@ -60,6 +80,13 @@ class EditorPane(QPlainTextEdit):
         self.markdown_highlighter = MarkdownHighlighter(
             self.document(), base_point_size=lambda: self.font().pointSize()
         )
+
+        # Optional line-number gutter (View menu toggle).
+        self._line_numbers_on = False
+        self._line_area = _LineNumberArea(self)
+        self._line_area.hide()
+        self.blockCountChanged.connect(lambda _n: self._update_gutter_width())
+        self.updateRequest.connect(self._on_update_request)
 
     # -- public API ---------------------------------------------------------
 
@@ -204,6 +231,103 @@ class EditorPane(QPlainTextEdit):
                     self.textCursor().insertText(prefix)
                     return
         super().keyPressEvent(event)
+
+    # -- line numbers (View menu toggle) ------------------------------------
+
+    def set_line_numbers_visible(self, on: bool) -> None:
+        self._line_numbers_on = on
+        self._line_area.setVisible(on)
+        self._update_gutter_width()
+
+    def line_numbers_visible(self) -> bool:
+        return self._line_numbers_on
+
+    def line_number_width(self) -> int:
+        """Gutter width: enough digits for the last line, plus padding."""
+        if not self._line_numbers_on:
+            return 0
+        digits = max(2, len(str(self.blockCount())))
+        return 10 + self.fontMetrics().horizontalAdvance("9") * digits
+
+    def _update_gutter_width(self) -> None:
+        self.setViewportMargins(self.line_number_width(), 0, 0, 0)
+
+    def _on_update_request(self, rect, dy) -> None:
+        """Keep the gutter scrolled/redrawn in step with the text."""
+        if not self._line_numbers_on:
+            return
+        if dy:
+            self._line_area.scroll(0, dy)
+        else:
+            self._line_area.update(0, rect.y(), self._line_area.width(),
+                                   rect.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        rect = self.contentsRect()
+        self._line_area.setGeometry(
+            QRect(rect.left(), rect.top(), self.line_number_width(),
+                  rect.height())
+        )
+
+    def paint_line_numbers(self, event) -> None:
+        """Draw the visible block numbers in the gutter (called by the
+        gutter widget's paintEvent)."""
+        painter = QPainter(self._line_area)
+        painter.fillRect(event.rect(), QColor("#f2f3f5"))
+        painter.setPen(QColor("#8a929c"))
+        painter.setFont(self.font())
+
+        block = self.firstVisibleBlock()
+        top = round(self.blockBoundingGeometry(block)
+                    .translated(self.contentOffset()).top())
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible():
+                bottom = top + round(self.blockBoundingRect(block).height())
+                if bottom >= event.rect().top():
+                    painter.drawText(
+                        0, top, self._line_area.width() - 6,
+                        self.fontMetrics().height(),
+                        Qt.AlignmentFlag.AlignRight,
+                        str(block.blockNumber() + 1),
+                    )
+                top = bottom
+            block = block.next()
+
+    # -- spelling context menu ----------------------------------------------
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """Right-click: the standard menu, topped with spelling
+        suggestions when the click landed on a misspelled word."""
+        from wordvault.editor.spelling import get_spelling
+
+        menu = self.createStandardContextMenu()
+        spelling = get_spelling()
+        if spelling.is_available() and self.markdown_highlighter.spelling_enabled:
+            cursor = self.cursorForPosition(event.pos())
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            word = cursor.selectedText()
+            if word and spelling.is_misspelled(word):
+                first = menu.actions()[0] if menu.actions() else None
+                for suggestion in spelling.suggestions(word):
+                    action = menu.addAction(suggestion)
+                    menu.insertAction(first, action)
+                    action.triggered.connect(
+                        lambda _c, s=suggestion, cur=cursor, w=word: (
+                            cur.insertText(s),
+                            self.correction_made.emit(w, s),
+                        )
+                    )
+                add_action = menu.addAction(f"Add “{word}” to dictionary")
+                menu.insertAction(first, add_action)
+                add_action.triggered.connect(
+                    lambda _c, w=word: (
+                        spelling.add_to_dictionary(w),
+                        self.markdown_highlighter.rehighlight(),
+                    )
+                )
+                menu.insertSeparator(first)
+        menu.exec(event.globalPos())
 
     # -- focus (hoist) mode: show one section, hide the rest (stage 7) ------
 

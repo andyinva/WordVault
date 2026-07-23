@@ -61,13 +61,29 @@ def _hash(text: str) -> str:
 
 
 def _display_line(text: str, start: int, width: int = 90) -> str:
-    """The line containing offset `start`, trimmed for a results list."""
+    """
+    A snippet of the line containing offset `start`, CENTERED on the
+    match.  Long paragraphs are single lines here, so trimming from the
+    line's beginning used to cut the matched word out of its own snippet
+    — the window must follow the match, with ellipses marking the cuts.
+    """
     line_start = text.rfind("\n", 0, start) + 1
     line_end = text.find("\n", start)
     if line_end == -1:
         line_end = len(text)
-    line = text[line_start:line_end].strip()
-    return line[:width] + ("…" if len(line) > width else "")
+    line = text[line_start:line_end]
+
+    if len(line.strip()) <= width:
+        return line.strip()
+
+    # Window around the match: a third of the width as lead-in context.
+    match_offset = start - line_start
+    left = max(0, match_offset - width // 3)
+    right = min(len(line), left + width)
+    left = max(0, right - width)          # use the full width near the end
+    snippet = line[left:right].strip()
+    return (("…" if left > 0 else "") + snippet
+            + ("…" if right < len(line) else ""))
 
 
 class SearchEngine:

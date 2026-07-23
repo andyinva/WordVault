@@ -47,6 +47,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         """
         super().__init__(document)
         self._base = base_point_size
+        #: When True (and pyspellchecker is installed), unknown words get
+        #: a red spell-check underline on top of any Markdown styling.
+        self.spelling_enabled = False
 
     # -- per-line styling ---------------------------------------------------
 
@@ -62,6 +65,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             fmt.setFontPointSize(base * _HEADING_SCALE.get(level, _DEFAULT_SCALE))
             self.setFormat(0, len(text), fmt)
             self.setFormat(0, level, self._marker_format())
+            self._underline_misspellings(text)
             return  # headings carry no inline styling
 
         # --- blockquote: the whole line muted italic, ">" dimmed ---
@@ -97,7 +101,27 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             fmt.setFontItalic(True)
             self._apply_span(m, fmt, marker_len=3)
 
+        self._underline_misspellings(text)
+
     # -- helpers ------------------------------------------------------------
+
+    def _underline_misspellings(self, text: str) -> None:
+        """Red squiggles under unknown words — ADDED to whatever format a
+        span already carries (bold stays bold, just underlined too)."""
+        if not self.spelling_enabled:
+            return
+        from wordvault.editor.spelling import get_spelling
+
+        spelling = get_spelling()
+        if not spelling.is_available():
+            return
+        for start, end in spelling.misspelled_spans(text):
+            fmt = QTextCharFormat(self.format(start))  # keep existing style
+            fmt.setUnderlineStyle(
+                QTextCharFormat.UnderlineStyle.SpellCheckUnderline
+            )
+            fmt.setUnderlineColor(QColor("#cc3333"))
+            self.setFormat(start, end - start, fmt)
 
     @staticmethod
     def _marker_format() -> QTextCharFormat:

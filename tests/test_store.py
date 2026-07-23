@@ -185,6 +185,23 @@ def test_unlinked_document_is_its_own_chain(store):
     assert [d.id for d in store.version_chain(a.id)] == [a.id]
 
 
+# -- spelling log ------------------------------------------------------------
+
+def test_spelling_log_and_summary(store):
+    doc = store.create_document("Essay")
+    store.log_spelling_fix(doc.id, "becase", "because", "dropped letter", "u")
+    store.log_spelling_fix(doc.id, "Becase", "Because", "dropped letter", "u")
+    store.log_spelling_fix(None, "seperate", "separate", "vowel swap", "e->a")
+
+    kinds, pairs = store.spelling_summary()
+    assert kinds == [("dropped letter", 2), ("vowel swap", 1)]
+    assert pairs[0] == ("becase", "because", 2)   # case-folded, most first
+
+    recent = store.spelling_history(2)
+    assert len(recent) == 2
+    assert recent[0]["typed"] == "seperate"       # newest first
+
+
 # -- search -----------------------------------------------------------------
 
 def test_search_current_finds_latest_text_only(store):

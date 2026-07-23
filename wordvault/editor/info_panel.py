@@ -17,6 +17,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QFormLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -102,3 +103,66 @@ class InfoPanel(QWidget):
                       self._revisions, self._words, self._position, self._tags,
                       self._verses):
             label.setText("—")
+
+
+class LibraryInfoPanel(QWidget):
+    """
+    Dockable 'about this library' panel (sits below Document Info):
+    document/revision counts, file size, oldest document date, the
+    library's file name and its location.  The location is shown in a
+    read-only line edit — it scrolls horizontally instead of stretching
+    the panel wide.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._documents = QLabel("—")
+        self._revisions = QLabel("—")
+        self._size = QLabel("—")
+        self._oldest = QLabel("—")
+        self._encrypted = QLabel("—")
+        self._name = QLabel("—")
+        self._name.setWordWrap(True)
+
+        # A read-only QLineEdit scrolls long paths horizontally — the
+        # requested space-saving trick.
+        self._location = QLineEdit()
+        self._location.setReadOnly(True)
+        self._location.setFrame(True)
+        self._location.setCursorPosition(0)
+
+        form = QFormLayout()
+        form.addRow("Documents:", self._documents)
+        form.addRow("Revisions:", self._revisions)
+        form.addRow("File size:", self._size)
+        form.addRow("Oldest doc:", self._oldest)
+        form.addRow("Encrypted:", self._encrypted)
+        form.addRow("File name:", self._name)
+        form.addRow("Location:", self._location)
+
+        outer = QVBoxLayout(self)
+        outer.addLayout(form)
+        outer.addStretch(1)
+
+    def update_info(
+        self,
+        documents: int,
+        revisions: int,
+        size_bytes: int,
+        oldest: str,
+        encrypted: bool,
+        file_name: str,
+        location: str,
+    ) -> None:
+        self._documents.setText(f"{documents:,}")
+        self._revisions.setText(f"{revisions:,}")
+        if size_bytes >= 1024 * 1024:
+            self._size.setText(f"{size_bytes / (1024 * 1024):.1f} MB")
+        else:
+            self._size.setText(f"{size_bytes / 1024:.0f} KB")
+        self._oldest.setText(oldest)
+        self._encrypted.setText("yes" if encrypted else "no")
+        self._name.setText(file_name)
+        self._location.setText(location)
+        self._location.setCursorPosition(0)   # show the start of the path

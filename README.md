@@ -125,6 +125,21 @@ next sitting — nothing forces you to judge all groups at once, and your
 decisions survive re-runs of the importer. Linked later versions show a
 "↳" marker in the Library list.
 
+### Everyday conveniences
+
+**File**: Close Document (Ctrl+W), a **Recent** submenu of the last ten
+documents, and **Print Document…** (Ctrl+Shift+P) with Page Setup for
+sending the open document to a local printer (or PDF). Library-level
+operations — backup, restore, encryption — live under **Library** where
+they belong. **View**: toggles for **Line Numbers** and **Check
+Spelling** (needs `pip install pyspellchecker`) — misspelled words get
+red squiggles, right-click offers corrections and "Add to dictionary";
+the dictionary is pre-seeded with Bible book names and your additions
+persist in `~/.wordvault/user_dictionary.txt`. A **Library Info** panel
+below Document Info shows counts, file size, and the library's location.
+Search result snippets center on the matched word, so the word you
+searched for is always visible in its snippet.
+
 ### The Document menu
 
 Everything about the *open* document in one place: **Go to Document…**

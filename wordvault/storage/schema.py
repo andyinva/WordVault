@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS scripture_refs (
 CREATE INDEX IF NOT EXISTS idx_scripture_verse
     ON scripture_refs(book, chapter, verse);
 
+-- The spelling-habits log: every observed correction of a misspelled
+-- word (suggestion click or hand fix caught at save time), classified
+-- by error kind.  Powers the "My Spelling Habits" report.
+CREATE TABLE IF NOT EXISTS spelling_log (
+    id          INTEGER PRIMARY KEY,
+    doc_id      INTEGER REFERENCES documents(id),
+    typed       TEXT NOT NULL,
+    corrected   TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    detail      TEXT NOT NULL DEFAULT '',
+    created_utc TEXT NOT NULL
+);
+
 -- The gather tray (DESIGN.md section 8, "mark and gather"): passages the
 -- author marked across documents, queued up to be gathered into a new
 -- document.  Persistent on purpose — marking can span many sittings.

@@ -1,0 +1,5 @@
+1. In the Library search results can you display the date last modified and size of the file. Have the same info in the "Go To Document" search as well. Also can you add the ability to sort by clicking on the header "Name", "Date", "Size" of each listing of found items. Clicking on a header again should reverse the sort. 
+
+
+
+11. correct spacing between paragraphs in documents. This will require going through the entire database to remove each documents extra spaces. There are often extra lines just after the tile and in other places. This should be checked for as each document is imported. I would think there should be a blank line between each title or paragraph but no more than one line. This would mean that all documents would end up looking the same as far as spacing.      

@@ -61,6 +61,71 @@ def test_extract_normalizes(tmp_path):
     assert normalize_text("a\r\nb\r") == "a\nb\n"
 
 
+def test_style_spacing_becomes_blank_lines(tmp_path):
+    # Word shows space between paragraphs via "space after" settings,
+    # with no empty paragraphs anywhere. The extractor must reproduce
+    # that visual space as blank lines.
+    from docx.shared import Pt
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    a = d.add_paragraph("First paragraph.")
+    a.paragraph_format.space_after = Pt(8)      # visually spaced in Word
+    d.add_paragraph("Second paragraph.")
+    path = tmp_path / "spaced.docx"
+    d.save(str(path))
+
+    assert extract_markdown(path) == "First paragraph.\n\nSecond paragraph.\n"
+
+
+def test_no_spacing_style_stays_tight(tmp_path):
+    # An explicit 0pt (Word's "No Spacing" look) keeps lines together —
+    # like a credits/ISBN block on a title page.
+    from docx.shared import Pt
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    for text in ["ISBN: 123", "Published in the USA"]:
+        p = d.add_paragraph(text)
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.space_before = Pt(0)
+    path = tmp_path / "tight.docx"
+    d.save(str(path))
+
+    assert extract_markdown(path) == "ISBN: 123\nPublished in the USA\n"
+
+
+def test_headings_always_get_breathing_room(tmp_path):
+    from docx.shared import Pt
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    p = d.add_paragraph("Intro text.")
+    p.paragraph_format.space_after = Pt(0)      # even with tight spacing...
+    d.add_paragraph("Chapter One", style="Heading 1")
+    q = d.add_paragraph("Chapter text.")
+    q.paragraph_format.space_before = Pt(0)
+    path = tmp_path / "headed.docx"
+    d.save(str(path))
+
+    # ...headings are separated on both sides anyway.
+    assert extract_markdown(path) == (
+        "Intro text.\n\n# Chapter One\n\nChapter text.\n"
+    )
+
+
+def test_normalize_caps_blank_line_runs():
+    # A Word title page's dozen empty paragraphs must not become a wall
+    # of blank space — runs collapse to at most two blank lines.
+    walled = "Title\n" + "\n" * 14 + "Author\n\nBody text\n"
+    assert normalize_text(walled) == "Title\n\n\nAuthor\n\nBody text\n"
+    # Single blank lines (normal paragraphing) pass through untouched.
+    assert normalize_text("one\n\ntwo\n") == "one\n\ntwo\n"
+
+
 def test_extract_markdown_carries_formatting(tmp_path):
     from wordvault.ingest.extract import extract_markdown
 

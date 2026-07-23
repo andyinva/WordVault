@@ -196,6 +196,48 @@ def test_outline_pane_follows_document(window_with_sections):
     assert window._outline.topLevelItemCount() == 2     # One, Two
 
 
+def test_close_document_resets_editor(window_with_sections):
+    window, doc = window_with_sections
+    assert window._current_doc is not None
+    window._on_close_document()
+    assert window._current_doc is None
+    assert not window._editor.isEnabled()
+    # Closing again is a harmless no-op.
+    window._on_close_document()
+
+
+def test_line_number_toggle(window_with_sections):
+    window, doc = window_with_sections
+    assert not window._editor.line_numbers_visible()
+    window._line_numbers_action.setChecked(True)
+    assert window._editor.line_numbers_visible()
+    assert window._editor.line_number_width() > 0
+    window._line_numbers_action.setChecked(False)
+    assert window._editor.line_number_width() == 0
+
+
+def test_library_info_panel_populates(window_with_sections):
+    window, doc = window_with_sections
+    panel = window._library_panel
+    assert panel._documents.text() == "1"
+    assert panel._name.text().endswith(".db")
+    assert panel._location.text()          # the path line edit is filled
+    # A new revision bumps the counts on save.
+    before = int(panel._revisions.text().replace(",", ""))
+    window._editor.setPlainText(DOC_TEXT + "more\n")
+    window._autosave()
+    assert int(panel._revisions.text().replace(",", "")) == before + 1
+
+
+def test_recent_menu_lists_opened_documents(window_with_sections):
+    window, doc = window_with_sections
+    window._settings.setValue("recent_docs", [])   # isolate from real use
+    window._open_document(doc.id)
+    window._rebuild_recent_menu()
+    titles = [a.text() for a in window._recent_menu.actions()]
+    assert "Sections" in titles
+
+
 def test_tag_filter_narrows_library(window_with_sections):
     window, doc = window_with_sections
     other = window._store.create_document("Untagged")

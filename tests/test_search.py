@@ -61,6 +61,20 @@ def test_find_regex(library):
     assert engine.find("", regex=True) == []
 
 
+def test_snippet_contains_match_in_long_paragraph(library):
+    # A match deep inside a long single-line paragraph must still appear
+    # in its own snippet (the window centers on the match).
+    store, engine, ids = library
+    doc = store.create_document("Long Paragraph")
+    text = ("word " * 120) + "Melchizedek appears here " + ("word " * 60) + "\n"
+    store.save_revision(doc.id, text)
+
+    matches = [m for m in engine.find("melchizedek") if m.doc_id == doc.id]
+    assert len(matches) == 1
+    assert "Melchizedek" in matches[0].line       # the fix under test
+    assert matches[0].line.startswith("…")        # trimmed lead-in marked
+
+
 # -- staged replace ----------------------------------------------------------
 
 def test_replace_preview_then_apply(library):

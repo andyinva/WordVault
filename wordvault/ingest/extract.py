@@ -40,12 +40,29 @@ def normalize_text(text: str) -> str:
     (DESIGN.md section 12): LF line endings, no trailing whitespace on
     lines, exactly one trailing newline on non-empty text.
 
+    Runs of blank lines are capped at TWO.  Word documents often contain
+    a dozen empty paragraphs in a row (title pages, manual page spacing);
+    kept verbatim they become walls of blank space in the editor.  Capped
+    at two, the text reads like a hand-written Markdown file: one blank
+    line between paragraphs, at most a double break between sections.
+
     The same normalization is applied before exact-duplicate hashing, so
-    two files that differ only in line endings or trailing spaces are
-    recognized as the same text.
+    two files that differ only in line endings, trailing spaces, or
+    blank-line padding are recognized as the same text.
     """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    lines = [line.rstrip() for line in text.split("\n")]
+
+    lines = []
+    blank_run = 0
+    for line in (l.rstrip() for l in text.split("\n")):
+        if line == "":
+            blank_run += 1
+            if blank_run > 2:
+                continue          # cap the run — skip the excess blanks
+        else:
+            blank_run = 0
+        lines.append(line)
+
     body = "\n".join(lines).strip("\n")
     return body + "\n" if body else ""
 
@@ -109,35 +126,109 @@ def _runs_to_markdown(paragraph) -> str:
     return "".join(parts)
 
 
+def _effective_spacing_pts(paragraph, attribute: str):
+    """
+    Word's visual paragraph spacing ('space_after' / 'space_before') in
+    points, honoring style inheritance: the paragraph's own setting wins,
+    then its style, then the style's base styles.  None = nothing set
+    anywhere we can see (Word then falls back to document defaults,
+    which usually DO add space — see extract_markdown).
+    """
+    value = getattr(paragraph.paragraph_format, attribute)
+    if value is not None:
+        return value.pt
+    style = paragraph.style
+    seen = set()
+    while style is not None and style.style_id not in seen:
+        seen.add(style.style_id)
+        try:
+            value = getattr(style.paragraph_format, attribute)
+        except AttributeError:
+            value = None
+        if value is not None:
+            return value.pt
+        style = style.base_style
+    return None
+
+
 def extract_markdown(path: Union[str, Path]) -> str:
-    """Extract text from a .docx, translating structural formatting to
+    """
+    Extract text from a .docx, translating structural formatting to
     Markdown (see the mapping table above).  This is the default
-    extraction for ingest; extract_text() remains for a pure-plain run."""
+    extraction for ingest; extract_text() remains for a pure-plain run.
+
+    Paragraph SPACING is reproduced faithfully: Word shows space between
+    paragraphs either as empty paragraphs (kept, capped by
+    normalize_text) or as style-based "space after/before" settings —
+    for those, a blank line is emitted wherever Word actually showed
+    space, so the text reads in the editor the way the page read in
+    Word.  Rules:
+
+      * headings always get a blank line before and after;
+      * consecutive list items stay tight (a list is one block);
+      * consecutive quote lines stay tight (one quotation);
+      * otherwise: blank line when the previous paragraph's space-after
+        or this paragraph's space-before is >= 4pt — and also when NO
+        spacing is discoverable, because Word's document defaults add
+        space between paragraphs (tight blocks in Word carry an explicit
+        0pt / "No Spacing" style, which we honor).
+    """
     from docx import Document as DocxDocument
 
     docx = DocxDocument(long_path(path))
     lines: list[str] = []
+    prev_kind: str = ""       # 'heading' | 'quote' | 'list' | 'plain' | ''
+    prev_space_after = None
+
     for p in docx.paragraphs:
         style = (p.style.name if p.style is not None else "") or ""
         style_lower = style.lower()
 
+        # ---- classify and render this paragraph ----
         if style_lower.startswith("heading"):
-            # "Heading 1" .. "Heading 9" -> # .. ###### (capped at 6).
             digits = "".join(ch for ch in style if ch.isdigit())
             level = min(int(digits), 6) if digits else 1
-            lines.append("#" * level + " " + p.text.strip())
+            kind, line = "heading", "#" * level + " " + p.text.strip()
         elif style_lower == "title":
-            lines.append("# " + p.text.strip())
+            kind, line = "heading", "# " + p.text.strip()
         elif style_lower == "subtitle":
-            lines.append("## " + p.text.strip())
+            kind, line = "heading", "## " + p.text.strip()
         elif "quote" in style_lower:
-            lines.append("> " + _runs_to_markdown(p))
+            kind, line = "quote", "> " + _runs_to_markdown(p)
         elif style_lower.startswith("list bullet"):
-            lines.append("- " + _runs_to_markdown(p))
+            kind, line = "list", "- " + _runs_to_markdown(p)
         elif style_lower.startswith("list number"):
-            lines.append("1. " + _runs_to_markdown(p))
+            kind, line = "list", "1. " + _runs_to_markdown(p)
         else:
-            lines.append(_runs_to_markdown(p))
+            kind, line = "plain", _runs_to_markdown(p)
+
+        if kind == "plain" and not line.strip():
+            # A genuinely empty paragraph: Word-authored spacing — keep it
+            # as a blank line (normalize_text caps long runs later).
+            lines.append("")
+            prev_kind, prev_space_after = "", None
+            continue
+
+        # ---- decide whether Word showed space before this paragraph ----
+        if lines and lines[-1] != "":
+            if kind == "heading" or prev_kind == "heading":
+                separated = True                    # headings breathe
+            elif kind == prev_kind and kind in ("list", "quote"):
+                separated = False                   # one block, stay tight
+            else:
+                after = prev_space_after
+                before = _effective_spacing_pts(p, "space_before")
+                if after is None and before is None:
+                    separated = True                # Word defaults add space
+                else:
+                    separated = (after or 0) >= 4 or (before or 0) >= 4
+            if separated:
+                lines.append("")
+
+        lines.append(line)
+        prev_kind = kind
+        prev_space_after = _effective_spacing_pts(p, "space_after")
+
     return normalize_text("\n".join(lines))
 
 

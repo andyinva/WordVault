@@ -667,6 +667,44 @@ class DocumentStore:
         ).fetchall()
         return [f"{r['book']} {r['chapter']}:{r['verse']}" for r in rows]
 
+    # -- spelling-habits log -------------------------------------------------
+
+    def log_spelling_fix(
+        self, doc_id: Optional[int], typed: str, corrected: str,
+        kind: str, detail: str = "",
+    ) -> None:
+        """Record one observed correction of a misspelled word."""
+        self._conn.execute(
+            "INSERT INTO spelling_log "
+            "(doc_id, typed, corrected, kind, detail, created_utc) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_id, typed, corrected, kind, detail, _utc_now()),
+        )
+        self._conn.commit()
+
+    def spelling_history(self, limit: int = 25) -> list[dict]:
+        """The most recent corrections, newest first."""
+        rows = self._conn.execute(
+            "SELECT typed, corrected, kind, detail, created_utc "
+            "FROM spelling_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def spelling_summary(self) -> tuple[list[tuple[str, int]],
+                                        list[tuple[str, str, int]]]:
+        """(counts by error kind, most-repeated typed->corrected pairs)."""
+        kinds = self._conn.execute(
+            "SELECT kind, COUNT(*) n FROM spelling_log "
+            "GROUP BY kind ORDER BY n DESC"
+        ).fetchall()
+        pairs = self._conn.execute(
+            "SELECT lower(typed) t, lower(corrected) c, COUNT(*) n "
+            "FROM spelling_log GROUP BY t, c ORDER BY n DESC LIMIT 12"
+        ).fetchall()
+        return ([(r["kind"], r["n"]) for r in kinds],
+                [(r["t"], r["c"], r["n"]) for r in pairs])
+
     # -- gather tray (DESIGN.md section 8: mark and gather) ------------------
 
     def add_gather_item(
