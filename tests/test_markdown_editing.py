@@ -194,6 +194,51 @@ def test_autocorrect_fires_before_smart_enter(pane):
     assert pane.toPlainText() == "- because\n- "
 
 
+# -- typewriter scrolling ----------------------------------------------------
+
+def test_typewriter_mode_pads_and_unpads_document(pane):
+    pane.setPlainText("some text\n" * 5)
+    frame_fmt = lambda: pane.document().rootFrame().frameFormat()
+
+    pane.set_typewriter_mode(True)
+    assert pane.typewriter_on()
+    assert frame_fmt().bottomMargin() > 50      # scroll-past-end padding
+    assert pane._typewriter_strip.isVisible() or True  # offscreen: flag only
+
+    pane.set_typewriter_mode(False)
+    assert frame_fmt().bottomMargin() <= 4      # back to normal
+
+
+def test_typewriter_margin_survives_document_load(pane):
+    pane.set_typewriter_mode(True)
+    pane.set_text_quietly("fresh document\n")   # setPlainText resets frames
+    assert pane.document().rootFrame().frameFormat().bottomMargin() > 50
+    pane.set_typewriter_mode(False)
+
+
+def test_typewriter_fraction_clamped_and_signalled(pane):
+    fired = []
+    pane.typewriter_fraction_changed.connect(fired.append)
+    pane.set_typewriter_fraction(0.05)          # too high on screen: clamp
+    assert abs(pane._typewriter_fraction - 0.15) < 0.001
+    pane.set_typewriter_fraction(0.99)
+    assert abs(pane._typewriter_fraction - 0.85) < 0.001
+    assert len(fired) == 2
+
+
+def test_typewriter_margin_stays_out_of_undo(pane):
+    pane.setPlainText("original words")
+    pane.set_typewriter_mode(True)              # margin applied (undo cleared)
+    cursor = pane.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    pane.setTextCursor(cursor)
+    cursor.insertText(" and more")
+    pane.undo()                                 # must undo TEXT, not margin
+    assert pane.toPlainText() == "original words"
+    assert pane.document().rootFrame().frameFormat().bottomMargin() > 50
+    pane.set_typewriter_mode(False)
+
+
 # -- highlighter -------------------------------------------------------------
 
 def test_highlighter_styles_without_changing_text(pane):

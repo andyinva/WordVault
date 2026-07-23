@@ -129,6 +129,14 @@ class MainWindow(QMainWindow):
             self._settings.value("autocorrect", True, type=bool)
         )
         self._refresh_autocorrect()
+        self._editor.set_typewriter_fraction(
+            float(self._settings.value("typewriter_anchor", 0.6))
+        )
+        self._editor.typewriter_fraction_changed.connect(
+            lambda f: self._settings.setValue("typewriter_anchor", f)
+        )
+        if self._settings.value("typewriter", False, type=bool):
+            self._typewriter_action.setChecked(True)
 
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
@@ -372,6 +380,18 @@ class MainWindow(QMainWindow):
         self._spelling_action.setCheckable(True)
         self._spelling_action.toggled.connect(self._on_toggle_spelling)
         view_menu.addAction(self._spelling_action)
+
+        self._typewriter_action = QAction("&Typewriter Scrolling", self)
+        self._typewriter_action.setCheckable(True)
+        self._typewriter_action.setToolTip(
+            "Hold the writing line at a fixed height — drag the handle on "
+            "the left edge to place it. Text scrolls up past the line."
+        )
+        self._typewriter_action.toggled.connect(
+            lambda on: (self._editor.set_typewriter_mode(on),
+                        self._settings.setValue("typewriter", on))
+        )
+        view_menu.addAction(self._typewriter_action)
 
         self._autocorrect_action = QAction("Auto-&Correct Repeated Fixes", self)
         self._autocorrect_action.setCheckable(True)
@@ -927,9 +947,18 @@ class MainWindow(QMainWindow):
         printer.setDocName(self._current_doc.title)
         dialog = QPrintDialog(printer, self)
         if dialog.exec():
-            # Prints the text as displayed (Markdown styling included);
-            # QTextDocument handles pagination and margins from Page Setup.
-            self._editor.document().print(printer)
+            # Typewriter mode pads the document's bottom; lift it so the
+            # print has no phantom blank space, then put it back.
+            typewriter = self._editor.typewriter_on()
+            if typewriter:
+                self._editor.set_typewriter_mode(False)
+            try:
+                # Prints the text as displayed (Markdown styling included);
+                # QTextDocument paginates using the Page Setup margins.
+                self._editor.document().print(printer)
+            finally:
+                if typewriter:
+                    self._editor.set_typewriter_mode(True)
             self.statusBar().showMessage("Sent to printer.", 5000)
 
     # ----------------------------------------------- View menu additions ---

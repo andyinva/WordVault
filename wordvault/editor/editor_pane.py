@@ -17,10 +17,50 @@ from __future__ import annotations
 import re
 
 from PyQt6.QtCore import QRect, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QTextCursor
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
 from wordvault.editor.markdown_highlighter import MarkdownHighlighter
+
+
+class _TypewriterStrip(QWidget):
+    """
+    The thin strip on the editor's left edge in typewriter mode.  Shows a
+    small handle at the anchor height; dragging it moves the writing line
+    up or down.  All logic lives in EditorPane.
+    """
+
+    WIDTH = 14
+
+    def __init__(self, editor: "EditorPane"):
+        super().__init__(editor)
+        self._editor = editor
+        self.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.setToolTip("Drag to move the typewriter writing line")
+
+    def paintEvent(self, event):  # noqa: N802 (Qt naming)
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), QColor("#eef1f4"))
+        y = self._editor.typewriter_anchor_y()
+        # A small right-pointing handle at the anchor height.
+        painter.setBrush(QColor("#3572b0"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        from PyQt6.QtGui import QPolygon
+        from PyQt6.QtCore import QPoint
+        painter.drawPolygon(QPolygon([
+            QPoint(3, y - 6), QPoint(self.WIDTH - 2, y), QPoint(3, y + 6),
+        ]))
+
+    def mousePressEvent(self, event):  # noqa: N802 (Qt naming)
+        self._drag(event)
+
+    def mouseMoveEvent(self, event):  # noqa: N802 (Qt naming)
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._drag(event)
+
+    def _drag(self, event) -> None:
+        height = max(1, self.height())
+        self._editor.set_typewriter_fraction(event.position().y() / height)
 
 
 class _LineNumberArea(QWidget):
@@ -53,6 +93,9 @@ class EditorPane(QPlainTextEdit):
     #: (typed, corrected) — a previously-learned fix was applied
     #: automatically as the author typed the same mistake again.
     autocorrected = pyqtSignal(str, str)
+
+    #: The typewriter anchor was dragged; MainWindow persists the value.
+    typewriter_fraction_changed = pyqtSignal(float)
 
     #: How long a silence counts as "a pause" (DESIGN.md: ~3 seconds).
     IDLE_MS = 3000
@@ -96,6 +139,13 @@ class EditorPane(QPlainTextEdit):
         self.blockCountChanged.connect(lambda _n: self._update_gutter_width())
         self.updateRequest.connect(self._on_update_request)
 
+        # Typewriter scrolling (View menu toggle): the writing line stays
+        # anchored at a fixed height; text scrolls up past it.
+        self._typewriter_on = False
+        self._typewriter_fraction = 0.6   # anchor height, 0=top .. 1=bottom
+        self._typewriter_strip = _TypewriterStrip(self)
+        self._typewriter_strip.hide()
+
     # -- public API ---------------------------------------------------------
 
     def set_text_quietly(self, text: str) -> None:
@@ -107,6 +157,9 @@ class EditorPane(QPlainTextEdit):
         finally:
             self._suppress_signals = False
         self._idle_timer.stop()
+        # setPlainText resets the document, losing the typewriter margin;
+        # re-apply (the undo stack is fresh here, so the guard is free).
+        self._apply_typewriter_margin()
 
     def stop_idle_timer(self) -> None:
         """Cancel a pending pause signal (e.g. the document was just saved
@@ -278,6 +331,89 @@ class EditorPane(QPlainTextEdit):
                     return
         super().keyPressEvent(event)
 
+    # -- typewriter scrolling (View menu toggle) ----------------------------
+    #
+    # The writing line is held at a fixed height (the anchor); text
+    # scrolls up past it instead of piling at the window's bottom edge.
+    # To let the LAST line of the document sit at the anchor, the document
+    # gets a large bottom margin while the mode is on ("scroll past end").
+    # Changing that margin must not enter the undo history, so it is
+    # applied inside an undo-disabled guard — which clears the session's
+    # undo stack.  It therefore only happens at load, on toggle, and when
+    # the anchor handle is dragged, never during ordinary typing.
+
+    def set_typewriter_mode(self, on: bool) -> None:
+        self._typewriter_on = on
+        self._typewriter_strip.setVisible(on)
+        self._update_gutter_width()
+        self._apply_typewriter_margin()
+        if on:
+            self._typewriter_adjust()
+        self.viewport().update()
+
+    def typewriter_on(self) -> bool:
+        return self._typewriter_on
+
+    def set_typewriter_fraction(self, fraction: float) -> None:
+        """Anchor height as a fraction of the window (0.15 top … 0.85
+        bottom); called by the drag handle and by settings restore."""
+        fraction = max(0.15, min(0.85, fraction))
+        if abs(fraction - self._typewriter_fraction) < 0.005:
+            return
+        self._typewriter_fraction = fraction
+        self._apply_typewriter_margin()
+        self._typewriter_strip.update()
+        self._typewriter_adjust()
+        self.viewport().update()
+        self.typewriter_fraction_changed.emit(fraction)
+
+    def typewriter_anchor_y(self) -> int:
+        """The anchor height in viewport pixels."""
+        return int(self.viewport().height() * self._typewriter_fraction)
+
+    def _apply_typewriter_margin(self) -> None:
+        """Give the document a bottom margin equal to the space below the
+        anchor, so the final line can be scrolled up to the anchor."""
+        document = self.document()
+        frame = document.rootFrame()
+        fmt = frame.frameFormat()
+        wanted = (
+            max(4, self.viewport().height() - self.typewriter_anchor_y())
+            if self._typewriter_on else 4
+        )
+        if int(fmt.bottomMargin()) == wanted:
+            return
+        # Root-frame format changes are undoable; keep them OUT of the
+        # author's undo history (see the section comment for the cost).
+        document.setUndoRedoEnabled(False)
+        fmt.setBottomMargin(wanted)
+        frame.setFrameFormat(fmt)
+        document.setUndoRedoEnabled(True)
+
+    def _typewriter_adjust(self) -> None:
+        """Scroll so the cursor's line sits at the anchor height."""
+        if not self._typewriter_on or self.isReadOnly():
+            return
+        spacing = max(1, self.fontMetrics().lineSpacing())
+        delta_lines = round(
+            (self.cursorRect().top() - self.typewriter_anchor_y()) / spacing
+        )
+        if delta_lines:
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() + delta_lines)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """Normal painting, plus a faint dashed line at the anchor height
+        so the writing line's home is visible."""
+        super().paintEvent(event)
+        if self._typewriter_on:
+            painter = QPainter(self.viewport())
+            pen = QPen(QColor("#c9d2dc"))
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            y = self.typewriter_anchor_y()
+            painter.drawLine(0, y, self.viewport().width(), y)
+
     # -- line numbers (View menu toggle) ------------------------------------
 
     def set_line_numbers_visible(self, on: bool) -> None:
@@ -295,8 +431,13 @@ class EditorPane(QPlainTextEdit):
         digits = max(2, len(str(self.blockCount())))
         return 10 + self.fontMetrics().horizontalAdvance("9") * digits
 
+    def _strip_width(self) -> int:
+        return _TypewriterStrip.WIDTH if self._typewriter_on else 0
+
     def _update_gutter_width(self) -> None:
-        self.setViewportMargins(self.line_number_width(), 0, 0, 0)
+        self.setViewportMargins(
+            self._strip_width() + self.line_number_width(), 0, 0, 0
+        )
 
     def _on_update_request(self, rect, dy) -> None:
         """Keep the gutter scrolled/redrawn in step with the text."""
@@ -311,9 +452,12 @@ class EditorPane(QPlainTextEdit):
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
         rect = self.contentsRect()
+        self._typewriter_strip.setGeometry(
+            QRect(rect.left(), rect.top(), self._strip_width(), rect.height())
+        )
         self._line_area.setGeometry(
-            QRect(rect.left(), rect.top(), self.line_number_width(),
-                  rect.height())
+            QRect(rect.left() + self._strip_width(), rect.top(),
+                  self.line_number_width(), rect.height())
         )
 
     def paint_line_numbers(self, event) -> None:
@@ -418,9 +562,13 @@ class EditorPane(QPlainTextEdit):
     # -- internals ----------------------------------------------------------
 
     def _on_text_changed(self) -> None:
-        """Every genuine edit restarts the idle countdown."""
+        """Every genuine edit restarts the idle countdown — and, in
+        typewriter mode, re-anchors the writing line after the layout
+        settles (hence the zero-delay timer)."""
         if not self._suppress_signals:
             self._idle_timer.start()
+            if self._typewriter_on:
+                QTimer.singleShot(0, self._typewriter_adjust)
 
     @staticmethod
     def _on_windows() -> bool:

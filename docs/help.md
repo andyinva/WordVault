@@ -112,6 +112,11 @@ sittings.
   the section you are working on. **Ctrl+Shift+U** shows it all again.
 - **Document Info panel**: dates, drafts, word count, and your place in
   the text.
+- **View ▸ Typewriter Scrolling**: holds the line you are typing at a
+  fixed height — like a typewriter's print line — so text scrolls up
+  past it instead of piling at the bottom of the window. Drag the small
+  blue handle on the editor's left edge to place the line where you
+  like it.
 
 ### Keeping your work safe
 
