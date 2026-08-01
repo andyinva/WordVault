@@ -202,6 +202,31 @@ def test_spelling_log_and_summary(store):
     assert recent[0]["typed"] == "seperate"       # newest first
 
 
+def test_last_modified_map(store):
+    a = store.create_document("A")
+    store.save_revision(a.id, "one\n", created_utc="2020-01-01T00:00:00+00:00")
+    store.save_revision(a.id, "two\n", created_utc="2021-06-01T00:00:00+00:00")
+    b = store.create_document("B (no revisions)")
+
+    modified = store.last_modified_map()
+    assert modified[a.id] == "2021-06-01T00:00:00+00:00"
+    assert b.id not in modified            # nothing saved yet
+
+
+def test_document_notes(store):
+    doc = store.create_document("Essay")
+    assert store.get_note(doc.id) == ""            # none yet
+
+    store.set_note(doc.id, "check the Moriah reference in ch. 3")
+    assert store.get_note(doc.id) == "check the Moriah reference in ch. 3"
+
+    store.set_note(doc.id, "done — expand the Boaz section next")
+    assert store.get_note(doc.id).startswith("done")
+
+    other = store.create_document("Other")
+    assert store.get_note(other.id) == ""          # notes are per-document
+
+
 def test_learned_corrections(store):
     store.log_spelling_fix(None, "Machpela", "Machpelah", "dropped letter", "h")
     store.log_spelling_fix(None, "becase", "because", "dropped letter", "u")

@@ -47,6 +47,14 @@ from wordvault.storage.store import DocumentStore
 _SCOPES = ["Whole library", "Current document", "Current version chain"]
 
 
+def _day(iso_utc) -> str:
+    """Stored UTC timestamp -> local YYYY-MM-DD (sorts correctly as text)."""
+    if not iso_utc:
+        return ""
+    from datetime import datetime
+    return datetime.fromisoformat(iso_utc).astimezone().strftime("%Y-%m-%d")
+
+
 class SearchDialog(QDialog):
     """Find / staged replace across the library."""
 
@@ -99,8 +107,15 @@ class SearchDialog(QDialog):
 
         # ---- results tree ----
         self._tree = QTreeWidget(self)
-        self._tree.setHeaderLabels(["Match", "Becomes"])
-        self._tree.setColumnWidth(0, 560)
+        self._tree.setHeaderLabels(["Match", "Becomes", "Created", "Modified"])
+        self._tree.setColumnWidth(0, 480)
+        self._tree.setColumnWidth(1, 120)
+        self._tree.setColumnWidth(2, 90)
+        self._tree.setColumnWidth(3, 90)
+        # Click a header to sort the document rows (their match children
+        # travel with them); dates as YYYY-MM-DD sort correctly as text.
+        self._tree.setSortingEnabled(True)
+        self._tree.header().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self._tree.itemActivated.connect(self._on_item_activated)
 
         self._status = QLabel("", self)
@@ -168,11 +183,13 @@ class SearchDialog(QDialog):
         for m in matches:
             by_doc.setdefault(m.doc_id, []).append(m)
 
+        modified = self._store.last_modified_map()
         for doc_id, doc_matches in by_doc.items():
             doc = self._store.get_document(doc_id)
             top = QTreeWidgetItem(
                 [f"{doc.title} — {len(doc_matches)} match"
-                 + ("es" if len(doc_matches) != 1 else ""), ""]
+                 + ("es" if len(doc_matches) != 1 else ""), "",
+                 _day(doc.created_utc), _day(modified.get(doc.id))]
             )
             for m in doc_matches:
                 child = QTreeWidgetItem([m.line, ""])
@@ -204,10 +221,13 @@ class SearchDialog(QDialog):
             return
 
         total = 0
+        modified = self._store.last_modified_map()
         for plan in self._plans:
+            doc = self._store.get_document(plan.doc_id)
             top = QTreeWidgetItem(
                 [f"{plan.title} — {len(plan.matches)} change"
-                 + ("s" if len(plan.matches) != 1 else ""), ""]
+                 + ("s" if len(plan.matches) != 1 else ""), "",
+                 _day(doc.created_utc), _day(modified.get(doc.id))]
             )
             for m in plan.matches:
                 child = QTreeWidgetItem([m.line, m.replacement])

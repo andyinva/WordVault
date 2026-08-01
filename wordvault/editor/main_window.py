@@ -129,28 +129,105 @@ class MainWindow(QMainWindow):
             self._settings.value("autocorrect", True, type=bool)
         )
         self._refresh_autocorrect()
-        self._editor.set_typewriter_fraction(
-            float(self._settings.value("typewriter_anchor", 0.6))
-        )
-        self._editor.typewriter_fraction_changed.connect(
-            lambda f: self._settings.setValue("typewriter_anchor", f)
-        )
-        if self._settings.value("typewriter", False, type=bool):
-            self._typewriter_action.setChecked(True)
 
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
+        self._restore_window_state()
+
+    # ---------------------------------- window-state persistence -----------
+
+    def _restore_window_state(self) -> None:
+        """Put the window back the way it was closed: size and position,
+        dock visibility/placement, the editor/notes divider — and reopen
+        the document that was being worked on (per library)."""
+        geometry = self._settings.value("win_geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        state = self._settings.value("win_state")
+        if state is not None:
+            self.restoreState(state)
+        split = self._settings.value("split_state")
+        if split is not None:
+            self._split.restoreState(split)
+
+        last = self._settings.value(f"last_doc:{self._library_path}")
+        if last is not None:
+            try:
+                self._open_document(int(last))
+            except (KeyError, ValueError):
+                pass   # the document is gone or another library: start clean
+
+    def _save_window_state(self) -> None:
+        self._settings.setValue("win_geometry", self.saveGeometry())
+        self._settings.setValue("win_state", self.saveState())
+        self._settings.setValue("split_state", self._split.saveState())
+        key = f"last_doc:{self._library_path}"
+        if self._current_doc is not None:
+            self._settings.setValue(key, self._current_doc.id)
+        else:
+            self._settings.remove(key)
 
     # ------------------------------------------------------------------ UI --
 
     def _build_central_area(self) -> None:
-        """Central widget: editor pane on top, timeline bar underneath."""
+        """Central widget, top to bottom: a FIXED title header (the text
+        scrolls beneath it), then a vertical splitter — the document
+        editor above (2/3) and the per-document notes pane below (1/3) —
+        then the find bar and the timeline."""
+        from PyQt6.QtWidgets import QSplitter
+
+        # Fixed title header, in a serif face so it reads as a nameplate,
+        # clearly distinct from the monospaced editing font.
+        self._title_label = QLabel("No document open", self)
+        self._title_label.setStyleSheet(
+            "QLabel {"
+            "  font-family: Georgia, 'Times New Roman', serif;"
+            "  font-size: 15pt; font-weight: bold;"
+            "  color: #1c3a5e; background: #f4f6f8;"
+            "  padding: 5px 10px; border-bottom: 1px solid #c9d2dc;"
+            "}"
+        )
+
         self._editor = EditorPane(self)
         self._editor.pause_detected.connect(self._autosave)
         self._editor.textChanged.connect(self._update_status)
         self._editor.cursorPositionChanged.connect(self._refresh_position)
         self._editor.correction_made.connect(self._on_suggestion_correction)
         self._editor.autocorrected.connect(self._on_autocorrected)
+
+        # The notes pane: thinking space attached to the open document.
+        # Deliberately NOT revision-tracked — notes are scaffolding.
+        from PyQt6.QtWidgets import QPlainTextEdit
+
+        self._notes = QPlainTextEdit(self)
+        self._notes.setPlaceholderText(
+            "Notes on this document — saved with it, kept out of the text…"
+        )
+        notes_font = self._notes.font()
+        notes_font.setPointSize(max(9, notes_font.pointSize() - 1))
+        self._notes.setFont(notes_font)
+        self._notes.setStyleSheet(
+            "QPlainTextEdit { background: #fbfaf4; }"
+        )
+        # Notes save themselves after a 3-second pause (their own timer —
+        # editing notes must not create document revisions).
+        from PyQt6.QtCore import QTimer
+
+        self._notes_timer = QTimer(self)
+        self._notes_timer.setSingleShot(True)
+        self._notes_timer.setInterval(3000)
+        self._notes_timer.timeout.connect(self._save_current_note)
+        self._notes.textChanged.connect(
+            lambda: self._notes_timer.start()
+            if not self._notes.signalsBlocked() else None
+        )
+
+        self._split = QSplitter(Qt.Orientation.Vertical, self)
+        self._split.addWidget(self._editor)
+        self._split.addWidget(self._notes)
+        self._split.setStretchFactor(0, 2)   # document: 2/3
+        self._split.setStretchFactor(1, 1)   # notes: 1/3
+        self._split.setChildrenCollapsible(True)
 
         self._timeline = TimelineBar(self)
         self._timeline.position_changed.connect(self._on_timeline_moved)
@@ -165,10 +242,24 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._editor, stretch=1)
+        layout.addWidget(self._title_label)
+        layout.addWidget(self._split, stretch=1)
         layout.addWidget(self._find_bar)
         layout.addWidget(self._timeline)
         self.setCentralWidget(container)
+
+    def _save_current_note(self) -> None:
+        """Persist the notes pane for the open document (no-op unchanged)."""
+        if self._current_doc is not None and self._notes.isEnabled():
+            self._store.set_note(self._current_doc.id,
+                                 self._notes.toPlainText())
+
+    def _load_note(self, doc_id: int) -> None:
+        """Fill the notes pane WITHOUT triggering its save timer."""
+        self._notes.blockSignals(True)
+        self._notes.setPlainText(self._store.get_note(doc_id))
+        self._notes.blockSignals(False)
+        self._notes_timer.stop()
 
     def _build_library_dock(self) -> None:
         """Left dock: tag filter + the document list."""
@@ -187,13 +278,20 @@ class MainWindow(QMainWindow):
         box.addWidget(self._tag_filter)
         box.addWidget(self._doc_list)
 
-        dock = QDockWidget("Library", self)
-        dock.setWidget(container)
-        dock.setFeatures(
+        self._library_list_dock = QDockWidget("Library", self)
+        # objectName is REQUIRED for QMainWindow.saveState() to persist
+        # this dock's visibility/position between sessions.
+        self._library_list_dock.setObjectName("LibraryListDock")
+        self._library_list_dock.setWidget(container)
+        # Closable too: View ▸ Library gets it back (author's request —
+        # full-width writing with the list tucked away).
+        self._library_list_dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
+                           self._library_list_dock)
         self._reload_tag_filter()
 
     def _build_side_panels(self) -> None:
@@ -202,18 +300,21 @@ class MainWindow(QMainWindow):
         self._outline = OutlinePane(self)
         self._outline.heading_activated.connect(self._on_heading_activated)
         self._outline_dock = QDockWidget("Outline", self)
+        self._outline_dock.setObjectName("OutlineDock")
         self._outline_dock.setWidget(self._outline)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._outline_dock)
 
         self._info_panel = InfoPanel(self)
         self._info_panel.edit_tags_requested.connect(self._on_edit_tags)
         self._info_dock = QDockWidget("Document Info", self)
+        self._info_dock.setObjectName("DocInfoDock")
         self._info_dock.setWidget(self._info_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._info_dock)
 
         # Library-wide facts, below the document panel.
         self._library_panel = LibraryInfoPanel(self)
         self._library_dock = QDockWidget("Library Info", self)
+        self._library_dock.setObjectName("LibraryInfoDock")
         self._library_dock.setWidget(self._library_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                            self._library_dock)
@@ -381,18 +482,6 @@ class MainWindow(QMainWindow):
         self._spelling_action.toggled.connect(self._on_toggle_spelling)
         view_menu.addAction(self._spelling_action)
 
-        self._typewriter_action = QAction("&Typewriter Scrolling", self)
-        self._typewriter_action.setCheckable(True)
-        self._typewriter_action.setToolTip(
-            "Hold the writing line at a fixed height — drag the handle on "
-            "the left edge to place it. Text scrolls up past the line."
-        )
-        self._typewriter_action.toggled.connect(
-            lambda on: (self._editor.set_typewriter_mode(on),
-                        self._settings.setValue("typewriter", on))
-        )
-        view_menu.addAction(self._typewriter_action)
-
         self._autocorrect_action = QAction("Auto-&Correct Repeated Fixes", self)
         self._autocorrect_action.setCheckable(True)
         self._autocorrect_action.setToolTip(
@@ -418,9 +507,13 @@ class MainWindow(QMainWindow):
         view_menu.addAction(unfocus_action)
 
         view_menu.addSeparator()
-        # The docks provide their own show/hide toggle actions.
+        # The docks provide their own show/hide toggle actions —
+        # checkboxes for the Library list, Outline, Document Info, and
+        # Library Info panels.
+        view_menu.addAction(self._library_list_dock.toggleViewAction())
         view_menu.addAction(self._outline_dock.toggleViewAction())
         view_menu.addAction(self._info_dock.toggleViewAction())
+        view_menu.addAction(self._library_dock.toggleViewAction())
 
         # --- Library menu: search, gather, review (stages 5-6) ---
         library_menu = self.menuBar().addMenu("&Library")
@@ -721,10 +814,13 @@ class MainWindow(QMainWindow):
 
     def _open_document(self, doc_id: int) -> None:
         """Load a document's newest text into the editor, in live mode."""
+        self._save_current_note()     # the OUTGOING document's notes
         self._current_doc = self._store.get_document(doc_id)
         self._record_recent(doc_id)   # feeds File ▸ Recent
         self._go_live()
         self._set_editor_enabled(True)
+        self._load_note(doc_id)
+        self._title_label.setText(self._current_doc.title)
         self._editor.setFocus()
 
     # -------------------------------------------------- time travel (new) --
@@ -889,6 +985,7 @@ class MainWindow(QMainWindow):
         if self._current_doc is None:
             return
         self._autosave()
+        self._save_current_note()
         self._current_doc = None
         self._revisions = []
         self._is_live = True
@@ -947,18 +1044,9 @@ class MainWindow(QMainWindow):
         printer.setDocName(self._current_doc.title)
         dialog = QPrintDialog(printer, self)
         if dialog.exec():
-            # Typewriter mode pads the document's bottom; lift it so the
-            # print has no phantom blank space, then put it back.
-            typewriter = self._editor.typewriter_on()
-            if typewriter:
-                self._editor.set_typewriter_mode(False)
-            try:
-                # Prints the text as displayed (Markdown styling included);
-                # QTextDocument paginates using the Page Setup margins.
-                self._editor.document().print(printer)
-            finally:
-                if typewriter:
-                    self._editor.set_typewriter_mode(True)
+            # Prints the text as displayed (Markdown styling included);
+            # QTextDocument paginates using the Page Setup margins.
+            self._editor.document().print(printer)
             self.statusBar().showMessage("Sent to printer.", 5000)
 
     # ----------------------------------------------- View menu additions ---
@@ -1142,6 +1230,7 @@ class MainWindow(QMainWindow):
             return
         self._store.rename_document(self._current_doc.id, title.strip())
         self._current_doc = self._store.get_document(self._current_doc.id)
+        self._title_label.setText(self._current_doc.title)
         self._reload_document_list()
         self._refresh_info()
         self.statusBar().showMessage("Renamed.", 4000)
@@ -1692,6 +1781,7 @@ class MainWindow(QMainWindow):
         recorded as new typing."""
         if self._current_doc is None or not self._is_live:
             return
+        self._save_current_note()    # notes ride along with every save
         if self._commit_live_text() is not None:
             # History grew: extend the slider, staying parked at the end.
             self._revisions = self._store.list_revisions(self._current_doc.id)
@@ -1711,6 +1801,8 @@ class MainWindow(QMainWindow):
         close the store."""
         try:
             self._autosave()
+            self._save_current_note()   # history mode skips _autosave
+            self._save_window_state()   # layout survives the restart
             self._store.close()
         except Exception as exc:  # never trap the user in a broken window
             QMessageBox.warning(self, "WordVault", f"Error while closing: {exc}")
@@ -1720,9 +1812,15 @@ class MainWindow(QMainWindow):
 
     def _set_editor_enabled(self, enabled: bool) -> None:
         self._editor.setEnabled(enabled)
+        self._notes.setEnabled(enabled)
         self._timeline.setEnabled(enabled and bool(self._revisions))
         if not enabled:
             self._editor.set_text_quietly("")
+            self._notes.blockSignals(True)
+            self._notes.clear()
+            self._notes.blockSignals(False)
+            self._notes_timer.stop()
+            self._title_label.setText("No document open")
 
     def _update_status(self) -> None:
         """Refresh the status-bar labels from current state."""

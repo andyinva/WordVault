@@ -249,6 +249,80 @@ def test_recent_menu_lists_opened_documents(window_with_sections):
         window._settings.setValue("recent_docs", saved)
 
 
+def test_title_header_follows_document(window_with_sections):
+    window, doc = window_with_sections
+    assert window._title_label.text() == "Sections"
+    window._on_close_document()
+    assert window._title_label.text() == "No document open"
+
+
+def test_notes_pane_saves_and_travels_per_document(window_with_sections):
+    window, doc = window_with_sections
+    window._notes.setPlainText("tighten the second section")
+    window._save_current_note()
+
+    other = window._store.create_document("Other Doc")
+    window._store.save_revision(other.id, "other text\n")
+    window._open_document(other.id)                # switch saves + loads
+    assert window._notes.toPlainText() == ""       # fresh doc: empty note
+
+    window._notes.setPlainText("note on the other doc")
+    window._open_document(doc.id)                  # switching back saves it
+    assert window._notes.toPlainText() == "tighten the second section"
+    assert window._store.get_note(other.id) == "note on the other doc"
+
+
+def test_notes_editing_never_creates_revisions(window_with_sections):
+    window, doc = window_with_sections
+    before = len(window._store.list_revisions(doc.id))
+    window._notes.setPlainText("just thinking out loud")
+    window._save_current_note()
+    assert len(window._store.list_revisions(doc.id)) == before
+
+
+def test_dock_toggle_actions_exist(window_with_sections):
+    window, doc = window_with_sections
+    # The author can hide the Library list and the Library Info panels.
+    assert window._library_list_dock.toggleViewAction() is not None
+    window._library_list_dock.close()
+    assert not window._library_list_dock.isVisible()
+    window._library_list_dock.toggleViewAction().trigger()
+
+
+def test_window_state_persists_across_sessions(qapp, tmp_path):
+    # Close with the Library list hidden and a document open; a new
+    # session must come back the same way.  The user's REAL layout keys
+    # are snapshotted and restored — tests must not rearrange their app.
+    from PyQt6.QtCore import QSettings
+    settings = QSettings("WordVault", "WordVault")
+    saved = {k: settings.value(k)
+             for k in ("win_geometry", "win_state", "split_state")}
+    db = tmp_path / "persist.db"
+    try:
+        window1 = MainWindow(db)
+        doc = window1._store.create_document("Resume Me")
+        window1._store.save_revision(doc.id, "where I left off\n")
+        window1._reload_document_list()
+        window1._open_document(doc.id)
+        window1._library_list_dock.hide()
+        window1.close()                          # closeEvent saves state
+
+        window2 = MainWindow(db)
+        assert window2._library_list_dock.isHidden()
+        assert window2._current_doc is not None
+        assert window2._current_doc.title == "Resume Me"
+        assert window2._title_label.text() == "Resume Me"
+        window2._library_list_dock.show()        # tidy up for later tests
+        window2.close()
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                settings.remove(key)
+            else:
+                settings.setValue(key, value)
+        settings.remove(f"last_doc:{db}")
+
+
 def test_tag_filter_narrows_library(window_with_sections):
     window, doc = window_with_sections
     other = window._store.create_document("Untagged")

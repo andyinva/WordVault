@@ -112,11 +112,17 @@ sittings.
   the section you are working on. **Ctrl+Shift+U** shows it all again.
 - **Document Info panel**: dates, drafts, word count, and your place in
   the text.
-- **View ▸ Typewriter Scrolling**: holds the line you are typing at a
-  fixed height — like a typewriter's print line — so text scrolls up
-  past it instead of piling at the bottom of the window. Drag the small
-  blue handle on the editor's left edge to place the line where you
-  like it.
+- **The notes pane**: below the editor, separated by a draggable divider
+  at about the two-thirds mark, is a scratchpad attached to the open
+  document. Jot reminders, questions, and plans there — notes save
+  themselves, travel with the document, and never appear in the text or
+  its revisions.
+- **The title header**: the open document's name sits fixed at the top
+  in a serif face; the text scrolls beneath it, so you always know what
+  you are working in.
+- **View menu checkboxes** hide or show the side panels: the Library
+  list, Outline, Document Info, and Library Info — clear the decks for
+  full-width writing whenever you wish.
 
 ### Keeping your work safe
 

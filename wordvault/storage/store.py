@@ -380,6 +380,14 @@ class DocumentStore:
         """Total revisions across all documents (for backup headers/UI)."""
         return self._conn.execute("SELECT COUNT(*) FROM revisions").fetchone()[0]
 
+    def last_modified_map(self) -> dict[int, str]:
+        """doc_id -> timestamp of its newest revision, in ONE query —
+        for date columns over many documents at once."""
+        rows = self._conn.execute(
+            "SELECT doc_id, MAX(created_utc) AS m FROM revisions GROUP BY doc_id"
+        ).fetchall()
+        return {r["doc_id"]: r["m"] for r in rows}
+
     def export_plaintext_copy(self, dest_path: Union[str, Path]) -> None:
         """A PLAIN (unencrypted) clean copy of the database — what goes
         inside a .wvbackup, whose own envelope provides the encryption.
@@ -666,6 +674,29 @@ class DocumentStore:
             (doc_a, doc_b),
         ).fetchall()
         return [f"{r['book']} {r['chapter']}:{r['verse']}" for r in rows]
+
+    # -- document notes (the scratchpad pane) --------------------------------
+
+    def get_note(self, doc_id: int) -> str:
+        """The working note attached to a document ('' if none yet)."""
+        row = self._conn.execute(
+            "SELECT text FROM document_notes WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        return row["text"] if row else ""
+
+    def set_note(self, doc_id: int, text: str) -> None:
+        """Save the working note (no-op when unchanged — the notes pane
+        calls this liberally)."""
+        if self.get_note(doc_id) == text:
+            return
+        self.get_document(doc_id)  # existence check
+        self._conn.execute(
+            "INSERT INTO document_notes (doc_id, text, updated_utc) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(doc_id) DO UPDATE SET text = ?, updated_utc = ?",
+            (doc_id, text, _utc_now(), text, _utc_now()),
+        )
+        self._conn.commit()
 
     # -- spelling-habits log -------------------------------------------------
 

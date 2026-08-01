@@ -38,12 +38,13 @@ def store_with_titles(tmp_path):
 
 
 def titles_shown(dialog):
-    return [dialog._list.item(i).text() for i in range(dialog._list.count())]
+    return [dialog._tree.topLevelItem(i).text(0)
+            for i in range(dialog._tree.topLevelItemCount())]
 
 
 def test_quick_open_filters_and_ranks(qapp, store_with_titles):
     dialog = QuickOpenDialog(store_with_titles)
-    assert dialog._list.count() == 4            # empty query: everything
+    assert dialog._tree.topLevelItemCount() == 4   # empty query: everything
 
     dialog._edit.setText("kingdom")
     shown = titles_shown(dialog)
@@ -51,7 +52,53 @@ def test_quick_open_filters_and_ranks(qapp, store_with_titles):
     assert shown == ["Kingdom Parables", "The Coming Kingdom"]
 
     dialog._edit.setText("zzz")
-    assert dialog._list.count() == 0
+    assert dialog._tree.topLevelItemCount() == 0
+
+
+def test_quick_open_shows_and_sorts_dates(qapp, tmp_path):
+    from PyQt6.QtCore import Qt
+
+    store = DocumentStore(tmp_path / "dates.db")
+    for title, created in [("Newest", "2026-03-01T00:00:00+00:00"),
+                           ("Oldest", "2019-06-01T00:00:00+00:00"),
+                           ("Middle", "2023-01-15T00:00:00+00:00")]:
+        doc = store.create_document(title, created_utc=created)
+        store.save_revision(doc.id, title + " text\n", created_utc=created)
+
+    dialog = QuickOpenDialog(store)
+    first = dialog._tree.topLevelItem(0)
+    assert first.text(1) and first.text(2)         # both date columns filled
+
+    dialog._tree.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+    assert titles_shown(dialog) == ["Oldest", "Middle", "Newest"]
+    dialog._tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
+    assert titles_shown(dialog) == ["Newest", "Middle", "Oldest"]
+    store.close()
+
+
+def test_search_dialog_doc_rows_carry_dates(qapp, tmp_path):
+    from wordvault.editor.search_dialog import SearchDialog
+
+    store = DocumentStore(tmp_path / "sd.db")
+    doc = store.create_document("Kingdom Essay",
+                                created_utc="2022-04-01T00:00:00+00:00")
+    store.save_revision(doc.id, "the kingdom come\n")
+
+    dialog = SearchDialog(store, current_doc_id=lambda: None)
+    dialog._find_edit.setText("kingdom")
+    dialog._on_search()
+
+    top = dialog._tree.topLevelItem(0)
+    assert top.text(0).startswith("Kingdom Essay")
+    # Dates display in LOCAL time — compute the expectation the same way
+    # (midnight UTC is the previous evening west of Greenwich).
+    from datetime import datetime
+    expected = datetime.fromisoformat(
+        "2022-04-01T00:00:00+00:00"
+    ).astimezone().strftime("%Y-%m-%d")
+    assert top.text(2) == expected                 # created
+    assert top.text(3)                             # modified (today)
+    store.close()
 
 
 def test_quick_open_enter_selects_top_match(qapp, store_with_titles):

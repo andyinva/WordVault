@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS scripture_refs (
 CREATE INDEX IF NOT EXISTS idx_scripture_verse
     ON scripture_refs(book, chapter, verse);
 
+-- Working notes attached to a document: the scratchpad shown in the
+-- pane beneath the editor.  One note per document, freely edited (notes
+-- are thinking space, not manuscript — they are not revision-tracked).
+CREATE TABLE IF NOT EXISTS document_notes (
+    doc_id      INTEGER PRIMARY KEY REFERENCES documents(id),
+    text        TEXT NOT NULL DEFAULT '',
+    updated_utc TEXT NOT NULL
+);
+
 -- The spelling-habits log: every observed correction of a misspelled
 -- word (suggestion click or hand fix caught at save time), classified
 -- by error kind.  Powers the "My Spelling Habits" report.
