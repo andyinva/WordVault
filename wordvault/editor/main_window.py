@@ -634,6 +634,7 @@ class MainWindow(QMainWindow):
             encrypted=self._store.is_encrypted,
             idle_seconds=max(1, self._editor.idle_ms() // 1000),
             font_size=self._editor.font().pointSize(),
+            author=str(self._settings.value("author", "")),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -643,6 +644,7 @@ class MainWindow(QMainWindow):
         self._editor.set_font_point_size(dialog.font_size)
         self._settings.setValue("idle_ms", dialog.idle_seconds * 1000)
         self._settings.setValue("font_pt", dialog.font_size)
+        self._settings.setValue("author", dialog.author)
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).
@@ -1082,8 +1084,13 @@ class MainWindow(QMainWindow):
             else:
                 from wordvault.printing.renderer import print_styled
 
-                # Handles normal AND mirrored (book) margins.
-                print_styled(printer, self._editor.toPlainText(), chosen)
+                # Handles normal AND mirrored margins, headers/footers,
+                # and the byline's {title}/{author}/{date} variables.
+                print_styled(
+                    printer, self._editor.toPlainText(), chosen,
+                    title=self._current_doc.title,
+                    author=str(self._settings.value("author", "")),
+                )
             self.statusBar().showMessage(
                 f"Sent to printer ({choice}).", 6000
             )

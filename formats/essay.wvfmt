@@ -37,6 +37,16 @@ italic = true
 space_before_pt = 10
 space_after_pt = 6
 
+[byline]
+text = "{author} — {date}"
+italic = true
+align = "center"
+size_pt = 10.5
+space_after_pt = 16
+
+[footer]
+center = "{page}"
+
 [quote]
 italic = true
 indent_mm = 10

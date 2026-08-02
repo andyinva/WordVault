@@ -104,7 +104,49 @@ def test_normal_margins_table_in_mm(tmp_path):
     assert fmt.margins.for_page(0) == (30.0, 18.0, 30.0, 22.0)
 
 
+FURNISHED = """
+[format]
+name = "Furnished"
+
+[header]
+center = "{title}"
+italic = true
+size_pt = 8.5
+
+[footer]
+left = "{author}"
+center = "Page {page} of {pages}"
+
+[byline]
+text = "{author} — {date}"
+align = "center"
+italic = true
+"""
+
+
+def test_furniture_and_byline_parse(tmp_path):
+    fmt = load_format(write(tmp_path, FURNISHED, "furn.wvfmt"))
+    assert fmt.header.wanted() and fmt.header.center == "{title}"
+    assert fmt.header.italic and fmt.header.size_pt == 8.5
+    assert fmt.footer.left == "{author}"
+    assert fmt.byline_text == "{author} — {date}"
+    style = fmt.style_for_byline()
+    assert style.italic and style.align == "center"
+    assert style.font == "Georgia"       # inherits from body defaults
+    # Furniture forces manual pagination even without mirror margins.
+    assert fmt.needs_manual_pagination()
+
+
+def test_plain_format_needs_no_manual_pagination(tmp_path):
+    fmt = load_format(write(tmp_path, GOOD))
+    assert not fmt.needs_manual_pagination()
+
+
 @pytest.mark.parametrize("bad,fragment", [
+    ("[footer]\ncenter = '{pgae}'\n", "unknown variable"),
+    ("[byline]\ntext = 'p. {page}'\n", "unknown variable"),
+    ("[byline]\nitalic = true\n", "needs a 'text'"),
+    ("[header]\nmiddle = 'x'\n", "unknown key"),
     ("[page.margins]\nleft = 20\ninside = 30\n", "not both"),
     ("[page.margins]\ngutter = 5\nleft = 20\n", "gutter only applies"),
     ("[page.margins]\nunit = 'cm'\n", "must be 'mm' or 'in'"),

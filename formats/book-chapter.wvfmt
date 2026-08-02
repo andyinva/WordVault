@@ -40,6 +40,15 @@ align = "center"
 space_before_pt = 18
 space_after_pt = 12
 
+[header]
+center = "{title}"
+italic = true
+size_pt = 9
+
+[footer]
+center = "{page} of {pages}"
+size_pt = 9
+
 [quote]
 italic = true
 indent_mm = 12

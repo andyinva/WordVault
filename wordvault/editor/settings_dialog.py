@@ -43,10 +43,17 @@ class SettingsDialog(QDialog):
         encrypted: bool,
         idle_seconds: int,
         font_size: int,
+        author: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
         self._initially_encrypted = encrypted
+
+        # The author's name: fills the {author} variable in print
+        # formats (bylines, headers, footers).
+        self._author_edit = QLineEdit(self)
+        self._author_edit.setText(author)
+        self._author_edit.setPlaceholderText("Used by print formats ({author})")
 
         # --- everyday knobs ---
         self._idle_spin = QSpinBox(self)
@@ -80,6 +87,7 @@ class SettingsDialog(QDialog):
         warning.setWordWrap(True)
 
         form = QFormLayout()
+        form.addRow("Author name:", self._author_edit)
         form.addRow("Auto-save after a pause of:", self._idle_spin)
         form.addRow("Editor font size:", self._font_spin)
         form.addRow(self._enc_box)
@@ -102,6 +110,10 @@ class SettingsDialog(QDialog):
         self._update_passphrase_fields()
 
     # ------------------------------------------------------------- results --
+
+    @property
+    def author(self) -> str:
+        return self._author_edit.text().strip()
 
     @property
     def idle_seconds(self) -> int:

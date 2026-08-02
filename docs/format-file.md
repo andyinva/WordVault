@@ -69,6 +69,34 @@ indent_mm = 10
 indent_mm = 8
 ```
 
+## Page furniture and generated content
+
+```toml
+[header]                          # drawn in the top margin, every page
+left = ""
+center = "{title}"
+right = ""
+size_pt = 9                       # optional: font, bold, italic too
+
+[footer]                          # drawn in the bottom margin
+center = "Page {page} of {pages}"
+
+[byline]                          # ONE generated block after the first
+text = "{author} — {date}"        # heading (or leading the text when the
+italic = true                     # document has no opening heading);
+align = "center"                  # takes any style key
+```
+
+**Variables** (filled at print time): `{title}` (the document's name),
+`{author}` (from WordVault Settings), `{date}` (the printing date),
+and — in headers/footers only — `{page}` and `{pages}`. An unknown
+variable is a load-time error; `{page}` in a byline is too (a byline
+prints once).
+
+Headers, footers, and mirrored margins all switch printing to
+WordVault's own paginator, which draws each page's text slice and
+furniture at that page's margins.
+
 ## Mirror margins
 
 With `inside`/`outside` given, pages alternate exactly as in Word's

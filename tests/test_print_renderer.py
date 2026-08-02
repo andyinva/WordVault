@@ -127,6 +127,51 @@ def test_quote_indent_and_italic(document):
     assert first_run_font(quote).italic()
 
 
+BYLINE_FORMAT = FORMAT + """
+[byline]
+text = "{author} — printed {date}"
+italic = true
+align = "center"
+"""
+
+
+def test_byline_follows_first_heading(qapp, tmp_path):
+    path = tmp_path / "b.wvfmt"
+    path.write_text(BYLINE_FORMAT, encoding="utf-8")
+    document = build_print_document(
+        MARKDOWN, load_format(path),
+        title="My Essay", author="Andrew Hopkins", date_str="July 25, 2026",
+    )
+    lines = [b.text() for b in get_blocks(document)]
+    assert lines[0] == "Chapter One"
+    assert lines[1] == "Andrew Hopkins — printed July 25, 2026"
+    byline_block = get_blocks(document)[1]
+    assert byline_block.blockFormat().alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert first_run_font(byline_block).italic()
+
+
+def test_byline_leads_headingless_document(qapp, tmp_path):
+    path = tmp_path / "b2.wvfmt"
+    path.write_text(BYLINE_FORMAT, encoding="utf-8")
+    document = build_print_document(
+        "Just plain prose here.\n", load_format(path),
+        author="A. H.", date_str="today",
+    )
+    lines = [b.text() for b in get_blocks(document)]
+    assert lines[0] == "A. H. — printed today"
+    assert lines[1] == "Just plain prose here."
+
+
+def test_expand_fills_variables():
+    from wordvault.printing.renderer import _expand
+    out = _expand("Page {page} of {pages} — {title}",
+                  {"page": 3, "pages": 12, "title": "Essay"})
+    assert out == "Page 3 of 12 — Essay"
+    # Unknown variables pass through untouched (load-time validation is
+    # the real guard; expansion never crashes mid-print).
+    assert _expand("{mystery}", {}) == "{mystery}"
+
+
 def test_inline_bold_run(document):
     closing = get_blocks(document)[8]
     it = closing.begin()

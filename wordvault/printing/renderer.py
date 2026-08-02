@@ -131,13 +131,42 @@ def _write_block(cursor: QTextCursor, style: StyleSpec, text: str,
         cursor.insertText(segment, _char_format(style, bold, italic))
 
 
-def build_print_document(markdown_text: str, fmt: PrintFormat) -> QTextDocument:
-    """The whole translation: plain Markdown in, styled document out."""
+def _expand(template: str, variables: dict) -> str:
+    """Fill {title}/{author}/{date}/{page}/{pages} in a template."""
+    def replace(m: re.Match) -> str:
+        return str(variables.get(m.group(1), m.group(0)))
+    return re.sub(r"\{(\w+)\}", replace, template)
+
+
+def build_print_document(
+    markdown_text: str,
+    fmt: PrintFormat,
+    *,
+    title: str = "",
+    author: str = "",
+    date_str: str = "",
+) -> QTextDocument:
+    """The whole translation: plain Markdown in, styled document out.
+
+    When the format defines a [byline], its expanded template is inserted
+    as a generated block AFTER the first heading — or before everything
+    when the document opens with plain text instead of a title."""
     document = QTextDocument()
     cursor = QTextCursor(document)
     first = True
     list_counter = 0          # sequential numbering per contiguous list
     paragraph_lines: list[str] = []
+
+    byline_pending = bool(fmt.byline_text)
+    byline_vars = {"title": title, "author": author, "date": date_str}
+
+    def write_byline():
+        nonlocal first, byline_pending
+        if byline_pending:
+            _write_block(cursor, fmt.style_for_byline(),
+                         _expand(fmt.byline_text, byline_vars), first)
+            first = False
+            byline_pending = False
 
     def flush_paragraph():
         nonlocal first
@@ -160,6 +189,7 @@ def build_print_document(markdown_text: str, fmt: PrintFormat) -> QTextDocument:
             style = fmt.style_for_heading(len(heading.group(1)))
             _write_block(cursor, style, heading.group(2).strip(), first)
             first = False
+            write_byline()               # the byline follows the title
         elif quote:
             flush_paragraph()
             _write_block(cursor, fmt.style_for_quote(), quote.group(1), first)
@@ -178,9 +208,12 @@ def build_print_document(markdown_text: str, fmt: PrintFormat) -> QTextDocument:
         elif not line.strip():
             flush_paragraph()                     # blank line ends a paragraph
         else:
+            if byline_pending:
+                write_byline()   # no opening heading: byline leads the text
             paragraph_lines.append(line.strip())  # plain prose accumulates
 
     flush_paragraph()
+    write_byline()               # an all-blank document still gets its byline
     return document
 
 
@@ -203,21 +236,56 @@ def apply_page_setup(printer, fmt: PrintFormat) -> None:
     printer.setPageLayout(layout)
 
 
-def print_styled(printer, markdown_text: str, fmt: PrintFormat) -> None:
+def _draw_furniture(painter, spec, variables, x_left: float, x_right: float,
+                    baseline_y: float, body_font: str) -> None:
+    """Paint one header or footer line: three template slots at the text
+    column's left edge, centre, and right edge.  Coordinates in points
+    (the painter is already scaled)."""
+    font = QFont(spec.font or body_font)
+    font.setPointSizeF(spec.size_pt)
+    font.setBold(spec.bold)
+    font.setItalic(spec.italic)
+    painter.setFont(font)
+    metrics = painter.fontMetrics()
+
+    def draw(template: str, align: str) -> None:
+        if not template:
+            return
+        text = _expand(template, variables)
+        width = metrics.horizontalAdvance(text)
+        if align == "left":
+            x = x_left
+        elif align == "right":
+            x = x_right - width
+        else:
+            x = (x_left + x_right - width) / 2.0
+        painter.drawText(int(x), int(baseline_y), text)
+
+    draw(spec.left, "left")
+    draw(spec.center, "center")
+    draw(spec.right, "right")
+
+
+def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
+                 title: str = "", author: str = "") -> None:
     """
     Render and print with the chosen format.
 
-    Normal margins: QTextDocument.print() handles pagination.
-
-    MIRRORED margins (Word's book mode): Qt applies one margin set to
-    every page, so pagination is done by hand — the document is laid out
-    at the constant text width (page minus inside+gutter+outside), then
-    each page is painted at its own left offset: spine margin on the
-    left of odd (right-hand) pages, on the right of even pages.
+    Plain margins with no page furniture: QTextDocument.print() handles
+    pagination.  MIRRORED margins and/or headers/footers: pagination is
+    done by hand — the document is laid out at the constant text width,
+    each page painted at its own margins (spine side alternating in
+    mirror mode), with header and footer templates ({page}, {pages},
+    {title}, {author}, {date}) drawn into the margins.
     """
-    document = build_print_document(markdown_text, fmt)
+    from datetime import datetime
 
-    if not fmt.margins.mirrored:
+    date_str = datetime.now().strftime("%B %d, %Y")
+    document = build_print_document(
+        markdown_text, fmt, title=title, author=author, date_str=date_str
+    )
+
+    if not fmt.needs_manual_pagination():
         apply_page_setup(printer, fmt)
         document.print(printer)
         return
@@ -225,7 +293,7 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat) -> None:
     from PyQt6.QtCore import QRectF, QSizeF
     from PyQt6.QtGui import QPainter
 
-    apply_page_setup(printer, fmt)     # size; zero driver margins
+    apply_page_setup(printer, fmt)     # size; zero margins when mirrored
     printer.setFullPage(True)
 
     page_id = _PAGE_SIZES.get(fmt.page_size, QPageSize.PageSizeId.Letter)
@@ -235,23 +303,45 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat) -> None:
                  - (fmt.margins.top + fmt.margins.bottom) * _MM_TO_PT)
     document.setPageSize(QSizeF(text_w_pt, text_h_pt))
 
+    pages = document.pageCount()
+    base_vars = {"title": title, "author": author, "date": date_str,
+                 "pages": pages}
+    body_font = fmt.body.font or "Georgia"
+
     painter = QPainter(printer)
     try:
         # Document coordinates are points; the printer wants device dots.
         dots_per_pt = printer.resolution() / 72.0
         top_pt = fmt.margins.top * _MM_TO_PT
-        for page in range(document.pageCount()):
+        bottom_pt = fmt.margins.bottom * _MM_TO_PT
+        for page in range(pages):
             if page:
                 printer.newPage()
             _t, _r, _b, left_mm = fmt.margins.for_page(page)
+            left_pt = left_mm * _MM_TO_PT
             painter.save()
             painter.scale(dots_per_pt, dots_per_pt)
-            # Place this page's slice of the document at its margins.
-            painter.translate(left_mm * _MM_TO_PT,
-                              top_pt - page * text_h_pt)
+
+            # The text slice for this page, at its own left offset.
+            painter.save()
+            painter.translate(left_pt, top_pt - page * text_h_pt)
             document.drawContents(
                 painter, QRectF(0, page * text_h_pt, text_w_pt, text_h_pt)
             )
+            painter.restore()
+
+            # Page furniture, aligned to this page's text column.
+            page_vars = dict(base_vars, page=page + 1)
+            x_left, x_right = left_pt, left_pt + text_w_pt
+            if fmt.header.wanted():
+                _draw_furniture(painter, fmt.header, page_vars,
+                                x_left, x_right, top_pt - 9.0, body_font)
+            if fmt.footer.wanted():
+                _draw_furniture(
+                    painter, fmt.footer, page_vars, x_left, x_right,
+                    paper_pt.height() - bottom_pt + 9.0 + fmt.footer.size_pt,
+                    body_font,
+                )
             painter.restore()
     finally:
         painter.end()

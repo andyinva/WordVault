@@ -16,6 +16,7 @@ plain paragraph three pages into a printout.
 
 from __future__ import annotations
 
+import re
 import shutil
 
 try:
@@ -116,6 +117,41 @@ class StyleSpec:
         return merged
 
 
+#: Template variables, by where they make sense.  {page}/{pages} exist
+#: only while printing a particular page — page furniture territory.
+_DOC_VARS = {"title", "author", "date"}
+_PAGE_VARS = _DOC_VARS | {"page", "pages"}
+
+_VAR_RE = re.compile(r"\{(\w+)\}")
+
+
+def _check_template(template: str, allowed: set, where: str, path: Path) -> None:
+    unknown = set(_VAR_RE.findall(template)) - allowed
+    if unknown:
+        raise FormatError(
+            f"{path.name}: unknown variable(s) "
+            f"{sorted('{' + v + '}' for v in unknown)} in {where} "
+            f"(allowed: {sorted('{' + v + '}' for v in allowed)})"
+        )
+
+
+@dataclass
+class FurnitureSpec:
+    """A page header or footer: three template slots aligned to the text
+    column's left edge, centre, and right edge, drawn on every page."""
+
+    left: str = ""
+    center: str = ""
+    right: str = ""
+    font: Optional[str] = None      # None: the body font
+    size_pt: float = 9.0
+    bold: bool = False
+    italic: bool = False
+
+    def wanted(self) -> bool:
+        return bool(self.left or self.center or self.right)
+
+
 #: The ultimate fallbacks — a plain, readable page.
 _BODY_DEFAULTS = StyleSpec(
     font="Georgia", size_pt=11.0, bold=False, italic=False, align="left",
@@ -136,6 +172,19 @@ class PrintFormat:
     headings: dict = field(default_factory=dict)   # level -> StyleSpec
     quote: StyleSpec = field(default_factory=StyleSpec)
     list_style: StyleSpec = field(default_factory=StyleSpec)
+    header: FurnitureSpec = field(default_factory=FurnitureSpec)
+    footer: FurnitureSpec = field(default_factory=FurnitureSpec)
+    byline_text: str = ""                          # "" = no byline
+    byline_style: StyleSpec = field(default_factory=StyleSpec)
+
+    def needs_manual_pagination(self) -> bool:
+        """Mirrored margins and page furniture both require WordVault to
+        paginate and paint each page itself."""
+        return (self.margins.mirrored or self.header.wanted()
+                or self.footer.wanted())
+
+    def style_for_byline(self) -> StyleSpec:
+        return self.byline_style.merged_over(self.body)
 
     def style_for_heading(self, level: int) -> StyleSpec:
         """The effective style of a heading level: its own section if
@@ -253,6 +302,38 @@ def _parse_margins(data: dict, path: Path) -> Margins:
     )
 
 
+def _parse_furniture(section: str, data: dict, path: Path) -> FurnitureSpec:
+    """[header] / [footer]: template slots plus a small type face."""
+    allowed = {"left", "center", "right", "font", "size_pt", "bold", "italic"}
+    unknown = set(data) - allowed
+    if unknown:
+        raise FormatError(
+            f"{path.name}: unknown key(s) {sorted(unknown)} in [{section}]"
+        )
+    spec = FurnitureSpec()
+    for slot in ("left", "center", "right"):
+        template = str(data.get(slot, ""))
+        _check_template(template, _PAGE_VARS, f"[{section}] {slot}", path)
+        setattr(spec, slot, template)
+    if "font" in data:
+        spec.font = str(data["font"])
+    if "size_pt" in data:
+        try:
+            spec.size_pt = float(data["size_pt"])
+        except (TypeError, ValueError):
+            raise FormatError(
+                f"{path.name}: [{section}] size_pt must be a number"
+            ) from None
+    for key in ("bold", "italic"):
+        if key in data:
+            if not isinstance(data[key], bool):
+                raise FormatError(
+                    f"{path.name}: [{section}] {key} must be true/false"
+                )
+            setattr(spec, key, data[key])
+    return spec
+
+
 def load_format(path: Union[str, Path]) -> PrintFormat:
     """Load and validate one .wvfmt file (raises FormatError with a
     plain-language message on any problem)."""
@@ -263,7 +344,8 @@ def load_format(path: Union[str, Path]) -> PrintFormat:
     except tomllib.TOMLDecodeError as exc:
         raise FormatError(f"{path.name}: not valid TOML — {exc}") from None
 
-    allowed_sections = {"format", "page", *_STYLE_SECTIONS}
+    allowed_sections = {"format", "page", "header", "footer", "byline",
+                        *_STYLE_SECTIONS}
     unknown = set(data) - allowed_sections
     if unknown:
         raise FormatError(
@@ -317,6 +399,20 @@ def load_format(path: Union[str, Path]) -> PrintFormat:
         fmt.quote = _parse_style("quote", data["quote"], path)
     if "list" in data:
         fmt.list_style = _parse_style("list", data["list"], path)
+
+    if "header" in data:
+        fmt.header = _parse_furniture("header", data["header"], path)
+    if "footer" in data:
+        fmt.footer = _parse_furniture("footer", data["footer"], path)
+    if "byline" in data:
+        byline = dict(data["byline"])
+        template = str(byline.pop("text", ""))
+        if not template:
+            raise FormatError(f"{path.name}: [byline] needs a 'text' template")
+        # {page}/{pages} make no sense in a byline — it prints once.
+        _check_template(template, _DOC_VARS, "[byline] text", path)
+        fmt.byline_text = template
+        fmt.byline_style = _parse_style("byline", byline, path)
     return fmt
 
 
