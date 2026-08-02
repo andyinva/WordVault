@@ -1,0 +1,49 @@
+# Essay - a clean single-column layout for study essays.
+# Edit freely: this is YOUR copy (in ~/.wordvault/formats).
+# The full specification is in docs/format-file.md.
+
+[format]
+name = "Essay"
+
+[page]
+size = "Letter"
+margins_mm = [25, 22, 25, 22]     # top, right, bottom, left
+
+[body]
+font = "Georgia"
+size_pt = 11.5
+line_spacing = 1.35
+align = "justify"
+first_line_indent_mm = 6
+space_after_pt = 4
+
+[heading1]
+size_pt = 20
+bold = true
+align = "center"
+space_before_pt = 18
+space_after_pt = 14
+
+[heading2]
+size_pt = 15
+bold = true
+space_before_pt = 14
+space_after_pt = 8
+
+[heading3]
+size_pt = 12.5
+bold = true
+italic = true
+space_before_pt = 10
+space_after_pt = 6
+
+[quote]
+italic = true
+indent_mm = 10
+size_pt = 10.5
+space_before_pt = 6
+space_after_pt = 6
+
+[list]
+indent_mm = 8
+space_after_pt = 2

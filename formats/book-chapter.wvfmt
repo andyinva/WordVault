@@ -1,0 +1,51 @@
+# Book Chapter - each level-1 heading starts a fresh page, chapter-style.
+# Edit freely: this is YOUR copy (in ~/.wordvault/formats).
+
+[format]
+name = "Book Chapter"
+
+[page]
+size = "Letter"
+
+# Mirror margins, book-style: the wide inside margin sits at the spine —
+# left edge of odd (right-hand) pages, right edge of even pages.
+[page.margins]
+unit = "in"
+top = 0.7
+bottom = 0.5
+inside = 1.2
+outside = 0.7
+gutter = 0
+
+[body]
+font = "Georgia"
+size_pt = 11
+line_spacing = 1.4
+align = "justify"
+first_line_indent_mm = 6
+space_after_pt = 0
+
+[heading1]
+size_pt = 24
+bold = true
+align = "center"
+page_break_before = true          # every chapter opens its own page
+space_before_pt = 60
+space_after_pt = 30
+
+[heading2]
+size_pt = 14
+bold = true
+align = "center"
+space_before_pt = 18
+space_after_pt = 12
+
+[quote]
+italic = true
+indent_mm = 12
+space_before_pt = 8
+space_after_pt = 8
+
+[list]
+indent_mm = 10
+space_after_pt = 2

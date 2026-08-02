@@ -140,6 +140,20 @@ below Document Info shows counts, file size, and the library's location.
 Search result snippets center on the matched word, so the word you
 searched for is always visible in its snippet.
 
+### Printing with format files (.wvfmt)
+
+WordVault is deliberately non-WYSIWYG: documents are plain Markdown,
+and print styling lives in small TOML **format definition files**
+(`~/.wordvault/formats/*.wvfmt` — starters included: Essay, Book
+Chapter, Manuscript). At print time you pick a format *by name*; the
+Markdown is translated into a fully styled page — fonts, spacing,
+justification, indents, chapter page-breaks — and sent straight to the
+printer. The formatted page is first seen on paper (or via a
+Print-to-PDF printer). Formats are created by hand or by the future
+Formatter app, never inside WordVault; the last-used format is
+remembered per document. Spec: `docs/format-file.md` — a complete
+.wvfmt is a few hundred bytes, small enough to travel in a QR code.
+
 ### The Document menu
 
 Everything about the *open* document in one place: **Go to Document…**

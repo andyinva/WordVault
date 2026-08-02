@@ -1032,22 +1032,61 @@ class MainWindow(QMainWindow):
 
         QPageSetupDialog(self._ensure_printer(), self).exec()
 
+    _PLAIN_FORMAT = "Plain (as displayed)"
+
     def _on_print(self) -> None:
-        """File ▸ Print: the open document to a local printer (or PDF)."""
+        """File ▸ Print: pick a format BY NAME, then print — the styled
+        page is first seen on paper (non-WYSIWYG, by design; a
+        Print-to-PDF printer is the paper-free check).  The chosen
+        format's page size and margins outrank Page Setup."""
         from PyQt6.QtPrintSupport import QPrintDialog
+
+        from wordvault.printing import list_formats
 
         if self._current_doc is None:
             QMessageBox.information(self, "Print", "Open a document first.")
             return
         self._autosave()
+
+        # ---- choose the format (remembered per document) ----
+        formats = list_formats()
+        names = [self._PLAIN_FORMAT] + [f.name for f in formats]
+        remembered = str(self._settings.value(
+            f"print_format:{self._current_doc.uuid}", self._PLAIN_FORMAT
+        ))
+        current = names.index(remembered) if remembered in names else 0
+        choice, ok = QInputDialog.getItem(
+            self, "Print Format",
+            "Print with format (defined in ~/.wordvault/formats):",
+            names, current, editable=False,
+        )
+        if not ok:
+            return
+        self._settings.setValue(
+            f"print_format:{self._current_doc.uuid}", choice
+        )
+        chosen = next((f for f in formats if f.name == choice), None)
+
         printer = self._ensure_printer()
         printer.setDocName(self._current_doc.title)
+        if chosen is not None:
+            from wordvault.printing.renderer import apply_page_setup
+
+            apply_page_setup(printer, chosen)
+
         dialog = QPrintDialog(printer, self)
         if dialog.exec():
-            # Prints the text as displayed (Markdown styling included);
-            # QTextDocument paginates using the Page Setup margins.
-            self._editor.document().print(printer)
-            self.statusBar().showMessage("Sent to printer.", 5000)
+            if chosen is None:
+                # Plain: the text as displayed in the editor.
+                self._editor.document().print(printer)
+            else:
+                from wordvault.printing.renderer import print_styled
+
+                # Handles normal AND mirrored (book) margins.
+                print_styled(printer, self._editor.toPlainText(), chosen)
+            self.statusBar().showMessage(
+                f"Sent to printer ({choice}).", 6000
+            )
 
     # ----------------------------------------------- View menu additions ---
 

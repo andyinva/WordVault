@@ -1,0 +1,36 @@
+# Manuscript - double-spaced draft for markup, review, and editing.
+# Edit freely: this is YOUR copy (in ~/.wordvault/formats).
+
+[format]
+name = "Manuscript (double-spaced)"
+
+[page]
+size = "Letter"
+margins_mm = [25, 25, 25, 25]
+
+[body]
+font = "Courier New"
+size_pt = 12
+line_spacing = 2.0
+align = "left"
+first_line_indent_mm = 8
+space_after_pt = 0
+
+[heading1]
+size_pt = 12
+bold = true
+align = "center"
+space_before_pt = 24
+space_after_pt = 24
+
+[heading2]
+size_pt = 12
+bold = true
+space_before_pt = 24
+space_after_pt = 12
+
+[quote]
+indent_mm = 12
+
+[list]
+indent_mm = 10
