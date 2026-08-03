@@ -25,6 +25,7 @@ import re
 
 from PyQt6.QtCore import QMarginsF, Qt
 from PyQt6.QtGui import (
+    QColor,
     QFont,
     QPageLayout,
     QPageSize,
@@ -323,11 +324,21 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
             painter.scale(dots_per_pt, dots_per_pt)
 
             # The text slice for this page, at its own left offset.
+            # NOT drawContents(): its default paint context leaves the
+            # text color undefined, which printed every body invisibly
+            # (furniture, drawn with an explicit pen, showed — the great
+            # "blank pages with page numbers" hunt of Aug 2026).  Drawing
+            # through the layout with an explicit black-text context is
+            # the reliable route.
+            from PyQt6.QtGui import QAbstractTextDocumentLayout, QPalette
+
             painter.save()
             painter.translate(left_pt, top_pt - page * text_h_pt)
-            document.drawContents(
-                painter, QRectF(0, page * text_h_pt, text_w_pt, text_h_pt)
-            )
+            context = QAbstractTextDocumentLayout.PaintContext()
+            context.clip = QRectF(0, page * text_h_pt, text_w_pt, text_h_pt)
+            context.palette.setColor(QPalette.ColorRole.Text,
+                                     QColor(0, 0, 0))
+            document.documentLayout().draw(painter, context)
             painter.restore()
 
             # Page furniture, aligned to this page's text column.

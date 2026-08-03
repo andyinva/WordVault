@@ -217,3 +217,26 @@ def test_ensure_defaults_and_listing(tmp_path, monkeypatch):
     # Invalid files are skipped by the chooser list, not fatal.
     (ff.FORMATS_DIR / "broken.wvfmt").write_text("[[[", encoding="utf-8")
     assert "broken" not in {f.name.lower() for f in list_formats()}
+
+
+def test_untouched_copies_auto_upgrade_edited_ones_never(tmp_path, monkeypatch):
+    shipped = tmp_path / "shipped"
+    shipped.mkdir()
+    (shipped / "a.wvfmt").write_text("[format]\nname = 'A v1'\n")
+    (shipped / "b.wvfmt").write_text("[format]\nname = 'B v1'\n")
+    monkeypatch.setattr(ff, "_SHIPPED_DIR", shipped)
+    monkeypatch.setattr(ff, "FORMATS_DIR", tmp_path / "user")
+    ensure_default_formats()
+
+    # The author edits their copy of B; A stays untouched.
+    (ff.FORMATS_DIR / "b.wvfmt").write_text("[format]\nname = 'B mine'\n")
+
+    # A new WordVault version ships improved masters.
+    (shipped / "a.wvfmt").write_text("[format]\nname = 'A v2'\n")
+    (shipped / "b.wvfmt").write_text("[format]\nname = 'B v2'\n")
+    ensure_default_formats()
+
+    names = {f.name for f in list_formats()}
+    assert "A v2" in names           # untouched copy: auto-upgraded
+    assert "B mine" in names         # edited copy: the author's, forever
+    assert "B v2" not in names

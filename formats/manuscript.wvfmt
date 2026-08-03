@@ -29,6 +29,9 @@ bold = true
 space_before_pt = 24
 space_after_pt = 12
 
+[footer]
+center = "{page}"
+
 [quote]
 indent_mm = 12
 

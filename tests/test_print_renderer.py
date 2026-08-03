@@ -6,6 +6,7 @@ blocks directly — the same structures the printer receives.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -170,6 +171,81 @@ def test_expand_fills_variables():
     # Unknown variables pass through untouched (load-time validation is
     # the real guard; expansion never crashes mid-print).
     assert _expand("{mystery}", {}) == "{mystery}"
+
+
+def _pdf_text_ops(pdf_path):
+    """Count text-showing operators (Tj/TJ) inside a PDF's content
+    streams — the ground truth of whether anything was DRAWN.  Document
+    objects can look perfect while the page prints blank (the invisible
+    -text bug this guards against), so tests must read the output."""
+    import re as _re
+    import zlib
+
+    data = pdf_path.read_bytes()
+    count = 0
+    for match in _re.finditer(rb"stream\r?\n(.*?)endstream", data, _re.S):
+        payload = match.group(1)
+        try:
+            payload = zlib.decompress(payload)
+        except zlib.error:
+            pass
+        count += len(_re.findall(rb"T[jJ]", payload))
+    return count
+
+
+#: Runs in a SUBPROCESS on the NATIVE platform (not offscreen): Qt's
+#: offscreen plugin on Windows has no fonts at all, so nothing can be
+#: drawn there and the test would be blind.  argv: repo, fmt, out, md.
+_NATIVE_PRINT_SCRIPT = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtPrintSupport import QPrinter
+from wordvault.printing.format_file import load_format
+from wordvault.printing.renderer import print_styled
+app = QApplication([])
+fmt = load_format(sys.argv[2])
+printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+printer.setOutputFileName(sys.argv[3])
+markdown = open(sys.argv[4], encoding="utf-8").read()
+print_styled(printer, markdown, fmt, title="T", author="A")
+"""
+
+
+def test_manual_pagination_actually_draws_the_body(tmp_path):
+    """Print through the MANUAL pagination path (furniture forces it) to
+    a real PDF — with real fonts, in a native-platform subprocess — then
+    verify the body text was drawn, not just the header and footer."""
+    import os
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parent.parent
+    fmt_path = tmp_path / "furn.wvfmt"
+    fmt_path.write_text(FORMAT + '\n[footer]\ncenter = "{page}"\n',
+                        encoding="utf-8")
+    md_path = tmp_path / "doc.md"
+    md_path.write_text(MARKDOWN, encoding="utf-8")
+    out = tmp_path / "out.pdf"
+
+    assert load_format(fmt_path).needs_manual_pagination()
+
+    env = dict(os.environ)
+    env.pop("QT_QPA_PLATFORM", None)   # native platform: real fonts
+    proc = subprocess.run(
+        [sys.executable, "-c", _NATIVE_PRINT_SCRIPT,
+         str(repo), str(fmt_path), str(out), str(md_path)],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+    if proc.returncode != 0:
+        pytest.skip("native-platform printing unavailable here: "
+                    + proc.stderr.strip()[-200:])
+
+    assert out.exists() and out.stat().st_size > 1000
+    ops = _pdf_text_ops(out)
+    # Two pages of prose plus footers: dozens of text ops.  A furniture-
+    # only print (the invisible-body bug) produced one or two per page.
+    assert ops > 10, f"only {ops} text-draw ops — body not rendered"
 
 
 def test_inline_bold_run(document):

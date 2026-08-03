@@ -1051,23 +1051,41 @@ class MainWindow(QMainWindow):
         self._autosave()
 
         # ---- choose the format (remembered per document) ----
+        # Each entry lists its features, so what will print is visible
+        # BEFORE printing — the only preview a non-WYSIWYG system needs.
         formats = list_formats()
-        names = [self._PLAIN_FORMAT] + [f.name for f in formats]
+
+        def describe(f):
+            tags = []
+            if f.byline_text:
+                tags.append("byline")
+            if f.header.wanted():
+                tags.append("header")
+            if f.footer.wanted():
+                tags.append("page numbers")
+            if f.margins.mirrored:
+                tags.append("mirror margins")
+            return f.name + (f"   ({', '.join(tags)})" if tags else "")
+
+        display = [self._PLAIN_FORMAT] + [describe(f) for f in formats]
+        real_names = [self._PLAIN_FORMAT] + [f.name for f in formats]
         remembered = str(self._settings.value(
             f"print_format:{self._current_doc.uuid}", self._PLAIN_FORMAT
         ))
-        current = names.index(remembered) if remembered in names else 0
+        current = (real_names.index(remembered)
+                   if remembered in real_names else 0)
         choice, ok = QInputDialog.getItem(
             self, "Print Format",
             "Print with format (defined in ~/.wordvault/formats):",
-            names, current, editable=False,
+            display, current, editable=False,
         )
         if not ok:
             return
+        chosen_name = real_names[display.index(choice)]
         self._settings.setValue(
-            f"print_format:{self._current_doc.uuid}", choice
+            f"print_format:{self._current_doc.uuid}", chosen_name
         )
-        chosen = next((f for f in formats if f.name == choice), None)
+        chosen = next((f for f in formats if f.name == chosen_name), None)
 
         printer = self._ensure_printer()
         printer.setDocName(self._current_doc.title)
@@ -1078,6 +1096,12 @@ class MainWindow(QMainWindow):
 
         dialog = QPrintDialog(printer, self)
         if dialog.exec():
+            # Print-to-file always produces PDF content; a filename typed
+            # with another suffix (test.txt) would be a PDF in disguise.
+            out = printer.outputFileName()
+            if out and not out.lower().endswith(".pdf"):
+                stem = out.rsplit(".", 1)[0] if "." in Path(out).name else out
+                printer.setOutputFileName(stem + ".pdf")
             if chosen is None:
                 # Plain: the text as displayed in the editor.
                 self._editor.document().print(printer)

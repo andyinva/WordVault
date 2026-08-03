@@ -421,15 +421,58 @@ def load_format(path: Union[str, Path]) -> PrintFormat:
 # ---------------------------------------------------------------------------
 
 def ensure_default_formats() -> Path:
-    """Create ~/.wordvault/formats on first use, seeded with the starter
-    formats shipped in the repository.  Existing files are never touched
-    — the author's edits are theirs."""
+    """
+    Create ~/.wordvault/formats on first use, seeded with the starter
+    formats shipped in the repository — and keep UNMODIFIED copies
+    up to date when the shipped masters improve.
+
+    The rule that makes this safe: a sidecar record (.seeded.json)
+    remembers the hash each file had when seeded.  If the author's copy
+    still matches that hash (never edited), a newer master replaces it;
+    the moment the author edits a copy, it is theirs for good.
+    """
+    import hashlib
+    import json
+
     FORMATS_DIR.mkdir(parents=True, exist_ok=True)
+    record_path = FORMATS_DIR / ".seeded.json"
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        record = {}
+
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    changed = False
     if _SHIPPED_DIR.is_dir():
         for shipped in sorted(_SHIPPED_DIR.glob("*.wvfmt")):
             target = FORMATS_DIR / shipped.name
+            shipped_hash = digest(shipped)
             if not target.exists():
-                shutil.copy2(shipped, target)
+                shutil.copy2(shipped, target)          # first seeding
+                record[shipped.name] = shipped_hash
+                changed = True
+                continue
+            target_hash = digest(target)
+            if (target_hash == record.get(shipped.name)
+                    and target_hash != shipped_hash):
+                shutil.copy2(shipped, target)          # untouched: upgrade
+                record[shipped.name] = shipped_hash
+                changed = True
+            elif (target_hash == shipped_hash
+                    and record.get(shipped.name) != shipped_hash):
+                # The copy matches the current master (fresh manual copy,
+                # or seeded before record-keeping existed): adopt it, so
+                # future master improvements auto-upgrade it.
+                record[shipped.name] = shipped_hash
+                changed = True
+    if changed:
+        try:
+            record_path.write_text(json.dumps(record, indent=1),
+                                   encoding="utf-8")
+        except OSError:
+            pass
     return FORMATS_DIR
 
 
