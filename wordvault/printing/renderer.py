@@ -240,14 +240,22 @@ def apply_page_setup(printer, fmt: PrintFormat) -> None:
 def _draw_furniture(painter, spec, variables, x_left: float, x_right: float,
                     baseline_y: float, body_font: str) -> None:
     """Paint one header or footer line: three template slots at the text
-    column's left edge, centre, and right edge.  Coordinates in points
-    (the painter is already scaled)."""
+    column's left edge, centre, and right edge.
+
+    MUST be called with the painter scaled so 1 unit = 1 point, and the
+    font is sized in PIXELS (= points in that space).  Pixel sizing
+    bypasses the font engine's DPI mapping — a POINT-size font on a
+    scaled printer painter gets enlarged twice (DPI mapping x transform),
+    which printed the running title enormously ("book title in very
+    large print across the top", Aug 2026)."""
+    from PyQt6.QtGui import QFontMetrics
+
     font = QFont(spec.font or body_font)
-    font.setPointSizeF(spec.size_pt)
+    font.setPixelSize(max(1, round(spec.size_pt)))
     font.setBold(spec.bold)
     font.setItalic(spec.italic)
     painter.setFont(font)
-    metrics = painter.fontMetrics()
+    metrics = QFontMetrics(font)
 
     def draw(template: str, align: str) -> None:
         if not template:
@@ -320,19 +328,16 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
                 printer.newPage()
             _t, _r, _b, left_mm = fmt.margins.for_page(page)
             left_pt = left_mm * _MM_TO_PT
-            painter.save()
-            painter.scale(dots_per_pt, dots_per_pt)
 
-            # The text slice for this page, at its own left offset.
-            # NOT drawContents(): its default paint context leaves the
-            # text color undefined, which printed every body invisibly
-            # (furniture, drawn with an explicit pen, showed — the great
-            # "blank pages with page numbers" hunt of Aug 2026).  Drawing
-            # through the layout with an explicit black-text context is
-            # the reliable route.
+            # The text slice for this page, at its own left offset —
+            # drawn under a scaled painter (document coordinates are
+            # points).  NOT drawContents(): its default paint context
+            # leaves the text color undefined, which printed every body
+            # invisibly (the "blank pages with page numbers" hunt).
             from PyQt6.QtGui import QAbstractTextDocumentLayout, QPalette
 
             painter.save()
+            painter.scale(dots_per_pt, dots_per_pt)
             painter.translate(left_pt, top_pt - page * text_h_pt)
             context = QAbstractTextDocumentLayout.PaintContext()
             context.clip = QRectF(0, page * text_h_pt, text_w_pt, text_h_pt)
@@ -341,8 +346,11 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
             document.documentLayout().draw(painter, context)
             painter.restore()
 
-            # Page furniture, aligned to this page's text column.
+            # Page furniture: same scaled space as the body (1 unit =
+            # 1 pt), pixel-sized fonts — see _draw_furniture's warning.
             page_vars = dict(base_vars, page=page + 1)
+            painter.save()
+            painter.scale(dots_per_pt, dots_per_pt)
             x_left, x_right = left_pt, left_pt + text_w_pt
             if fmt.header.wanted():
                 _draw_furniture(painter, fmt.header, page_vars,

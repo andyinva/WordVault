@@ -222,8 +222,11 @@ def test_manual_pagination_actually_draws_the_body(tmp_path):
 
     repo = Path(__file__).resolve().parent.parent
     fmt_path = tmp_path / "furn.wvfmt"
-    fmt_path.write_text(FORMAT + '\n[footer]\ncenter = "{page}"\n',
-                        encoding="utf-8")
+    fmt_path.write_text(
+        FORMAT + '\n[header]\ncenter = "{title}"\nsize_pt = 9\n'
+        '\n[footer]\ncenter = "{page}"\n',
+        encoding="utf-8",
+    )
     md_path = tmp_path / "doc.md"
     md_path.write_text(MARKDOWN, encoding="utf-8")
     out = tmp_path / "out.pdf"
@@ -243,9 +246,33 @@ def test_manual_pagination_actually_draws_the_body(tmp_path):
 
     assert out.exists() and out.stat().st_size > 1000
     ops = _pdf_text_ops(out)
-    # Two pages of prose plus footers: dozens of text ops.  A furniture-
-    # only print (the invisible-body bug) produced one or two per page.
+    # Two pages of prose plus furniture: dozens of text ops.  A
+    # furniture-only print (the invisible-body bug) had one or two.
     assert ops > 10, f"only {ops} text-draw ops — body not rendered"
+
+    # Size sanity: the drawn font sizes must all be within one order of
+    # magnitude of each other (9pt footer vs 20pt heading is ratio ~2.2).
+    # The double-scaled-header bug printed furniture ~16x oversized.
+    import re as _re
+    import zlib
+
+    sizes = []
+    data = out.read_bytes()
+    for match in _re.finditer(rb"stream\r?\n(.*?)endstream", data, _re.S):
+        payload = match.group(1)
+        try:
+            payload = zlib.decompress(payload)
+        except zlib.error:
+            pass
+        sizes += [float(s) for s in
+                  _re.findall(rb"/\w+ ([0-9.]+) Tf", payload)]
+    sizes = [s for s in sizes if s > 0]
+    if sizes:   # some Qt builds embed sizes differently; guard, not skip
+        ratio = max(sizes) / min(sizes)
+        assert ratio < 6, (
+            f"font sizes {sorted(set(sizes))} span {ratio:.1f}x — "
+            f"furniture drawn at the wrong scale"
+        )
 
 
 def test_inline_bold_run(document):
