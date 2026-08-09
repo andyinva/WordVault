@@ -63,6 +63,18 @@ _PAGE_SIZES = {
 }
 
 
+def _qt_page_size(name: str) -> "QPageSize":
+    """The QPageSize for a format's page-size name.  Qt has no built-in
+    id for the 6x9-inch KDP book trim, so that one (and any future
+    custom trim) is constructed by its point dimensions (72 pt/inch)."""
+    from PyQt6.QtCore import QSizeF
+
+    if name == "6x9":
+        return QPageSize(QSizeF(6 * 72.0, 9 * 72.0),
+                         QPageSize.Unit.Point, "6x9 (KDP trim)")
+    return QPageSize(_PAGE_SIZES.get(name, QPageSize.PageSizeId.Letter))
+
+
 def _inline_segments(text: str):
     """Split one line into (text, bold, italic) runs per the ** and *
     conventions; unmatched markers stay literal."""
@@ -229,7 +241,7 @@ def apply_page_setup(printer, fmt: PrintFormat) -> None:
         top, right, bottom, left = fmt.margins.for_page(0)
         margins = QMarginsF(left, top, right, bottom)
     layout = QPageLayout(
-        QPageSize(_PAGE_SIZES.get(fmt.page_size, QPageSize.PageSizeId.Letter)),
+        _qt_page_size(fmt.page_size),
         QPageLayout.Orientation.Portrait,
         margins,
         QPageLayout.Unit.Millimeter,
@@ -299,22 +311,56 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
         document.print(printer)
         return
 
-    from PyQt6.QtCore import QRectF, QSizeF
-    from PyQt6.QtGui import QPainter
+    print_book(printer, fmt, body_document=document,
+               title=title, author=author)
 
+
+def print_book(printer, fmt: PrintFormat, *, body_document,
+               front_document=None, title: str = "",
+               author: str = "") -> None:
+    """
+    Hand-done pagination for a body document plus optional FRONT
+    MATTER (title page, copyright page — built by the Formatter).
+
+    The rules of the finished book:
+      * front-matter pages carry NO header, footer, or page number —
+        title and copyright pages are silent, by book convention;
+      * body page numbers restart at 1 on the first chapter page, and
+        {pages} counts body pages only;
+      * mirror margins follow the PHYSICAL page position, so the spine
+        edge keeps alternating correctly straight through the book.
+
+    Each page is a clipped slice of its document, painted under a
+    scaled painter (document coordinates are points).  NOT
+    drawContents(): its default paint context leaves the text color
+    undefined, which printed every body invisibly (the "blank pages
+    with page numbers" hunt).  Furniture shares the same scaled space
+    with pixel-sized fonts — see _draw_furniture's warning.
+    """
+    from datetime import datetime
+
+    from PyQt6.QtCore import QRectF, QSizeF
+    from PyQt6.QtGui import QAbstractTextDocumentLayout, QPainter, QPalette
+
+    date_str = datetime.now().strftime("%B %d, %Y")
     apply_page_setup(printer, fmt)     # size; zero margins when mirrored
     printer.setFullPage(True)
 
-    page_id = _PAGE_SIZES.get(fmt.page_size, QPageSize.PageSizeId.Letter)
-    paper_pt = QPageSize(page_id).sizePoints()   # QSize, in points
+    paper_pt = _qt_page_size(fmt.page_size).sizePoints()  # QSize, points
     text_w_pt = paper_pt.width() - fmt.margins.text_width_deduction() * _MM_TO_PT
     text_h_pt = (paper_pt.height()
                  - (fmt.margins.top + fmt.margins.bottom) * _MM_TO_PT)
-    document.setPageSize(QSizeF(text_w_pt, text_h_pt))
 
-    pages = document.pageCount()
+    # (document, carries furniture?) in printing order.
+    sections = []
+    if front_document is not None:
+        front_document.setPageSize(QSizeF(text_w_pt, text_h_pt))
+        sections.append((front_document, False))
+    body_document.setPageSize(QSizeF(text_w_pt, text_h_pt))
+    sections.append((body_document, True))
+
     base_vars = {"title": title, "author": author, "date": date_str,
-                 "pages": pages}
+                 "pages": body_document.pageCount()}
     body_font = fmt.body.font or "Georgia"
 
     painter = QPainter(printer)
@@ -323,44 +369,43 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
         dots_per_pt = printer.resolution() / 72.0
         top_pt = fmt.margins.top * _MM_TO_PT
         bottom_pt = fmt.margins.bottom * _MM_TO_PT
-        for page in range(pages):
-            if page:
-                printer.newPage()
-            _t, _r, _b, left_mm = fmt.margins.for_page(page)
-            left_pt = left_mm * _MM_TO_PT
+        physical = 0                   # position in the WHOLE book
+        for document, furnished in sections:
+            for page in range(document.pageCount()):
+                if physical:
+                    printer.newPage()
+                _t, _r, _b, left_mm = fmt.margins.for_page(physical)
+                left_pt = left_mm * _MM_TO_PT
 
-            # The text slice for this page, at its own left offset —
-            # drawn under a scaled painter (document coordinates are
-            # points).  NOT drawContents(): its default paint context
-            # leaves the text color undefined, which printed every body
-            # invisibly (the "blank pages with page numbers" hunt).
-            from PyQt6.QtGui import QAbstractTextDocumentLayout, QPalette
+                painter.save()
+                painter.scale(dots_per_pt, dots_per_pt)
+                painter.translate(left_pt, top_pt - page * text_h_pt)
+                context = QAbstractTextDocumentLayout.PaintContext()
+                context.clip = QRectF(0, page * text_h_pt,
+                                      text_w_pt, text_h_pt)
+                context.palette.setColor(QPalette.ColorRole.Text,
+                                         QColor(0, 0, 0))
+                document.documentLayout().draw(painter, context)
+                painter.restore()
 
-            painter.save()
-            painter.scale(dots_per_pt, dots_per_pt)
-            painter.translate(left_pt, top_pt - page * text_h_pt)
-            context = QAbstractTextDocumentLayout.PaintContext()
-            context.clip = QRectF(0, page * text_h_pt, text_w_pt, text_h_pt)
-            context.palette.setColor(QPalette.ColorRole.Text,
-                                     QColor(0, 0, 0))
-            document.documentLayout().draw(painter, context)
-            painter.restore()
-
-            # Page furniture: same scaled space as the body (1 unit =
-            # 1 pt), pixel-sized fonts — see _draw_furniture's warning.
-            page_vars = dict(base_vars, page=page + 1)
-            painter.save()
-            painter.scale(dots_per_pt, dots_per_pt)
-            x_left, x_right = left_pt, left_pt + text_w_pt
-            if fmt.header.wanted():
-                _draw_furniture(painter, fmt.header, page_vars,
-                                x_left, x_right, top_pt - 9.0, body_font)
-            if fmt.footer.wanted():
-                _draw_furniture(
-                    painter, fmt.footer, page_vars, x_left, x_right,
-                    paper_pt.height() - bottom_pt + 9.0 + fmt.footer.size_pt,
-                    body_font,
-                )
-            painter.restore()
+                if furnished:
+                    page_vars = dict(base_vars, page=page + 1)
+                    painter.save()
+                    painter.scale(dots_per_pt, dots_per_pt)
+                    x_left, x_right = left_pt, left_pt + text_w_pt
+                    if fmt.header.wanted():
+                        _draw_furniture(painter, fmt.header, page_vars,
+                                        x_left, x_right, top_pt - 9.0,
+                                        body_font)
+                    if fmt.footer.wanted():
+                        _draw_furniture(
+                            painter, fmt.footer, page_vars,
+                            x_left, x_right,
+                            paper_pt.height() - bottom_pt + 9.0
+                            + fmt.footer.size_pt,
+                            body_font,
+                        )
+                    painter.restore()
+                physical += 1
     finally:
         painter.end()

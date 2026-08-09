@@ -445,6 +445,20 @@ class MainWindow(QMainWindow):
 
         doc_menu.addSeparator()
 
+        # --- book navigation: walk the chapters of the current book
+        # project in order, so twelve essays read like one book ---
+        prev_ch_action = QAction("Previous &Chapter in Book", self)
+        prev_ch_action.setShortcut("Ctrl+Alt+Up")
+        prev_ch_action.triggered.connect(lambda: self._on_step_chapter(-1))
+        doc_menu.addAction(prev_ch_action)
+
+        next_ch_action = QAction("Next C&hapter in Book", self)
+        next_ch_action.setShortcut("Ctrl+Alt+Down")
+        next_ch_action.triggered.connect(lambda: self._on_step_chapter(+1))
+        doc_menu.addAction(next_ch_action)
+
+        doc_menu.addSeparator()
+
         verses_action = QAction("Documents Sharing &Verses…", self)
         verses_action.setShortcut("Ctrl+Shift+V")
         verses_action.triggered.connect(self._on_shared_verses)
@@ -539,6 +553,18 @@ class MainWindow(QMainWindow):
         review_action.setShortcut("Ctrl+G")
         review_action.triggered.connect(self._on_review_groups)
         library_menu.addAction(review_action)
+
+        library_menu.addSeparator()
+
+        # --- the Book Formatter: assemble library chapters into a
+        # print-ready book PDF (its own window; see wordvault.formatter) ---
+        formatter_action = QAction("Book &Formatter…", self)
+        formatter_action.setShortcut("Ctrl+Shift+B")
+        formatter_action.setToolTip(
+            "Assemble chapters from the library into a book PDF"
+        )
+        formatter_action.triggered.connect(self._on_formatter)
+        library_menu.addAction(formatter_action)
 
         library_menu.addSeparator()
 
@@ -712,6 +738,24 @@ class MainWindow(QMainWindow):
         self._autosave()  # decisions may re-order the library; save first
         ReviewDialog(self._store, self).exec()
         self._reload_document_list()  # chain markers may have changed
+
+    def _on_formatter(self) -> None:
+        """Open (or raise) the Book Formatter — a NON-modal window, so
+        writing in WordVault can continue while a book sits open.  One
+        window per session: reopening raises the same one, keeping its
+        chapter list and unsaved edits."""
+        from wordvault.formatter.window import FormatterWindow
+
+        self._autosave()   # the book builds from saved library text
+        existing = getattr(self, "_formatter_window", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        self._formatter_window = FormatterWindow(
+            self._store, self._settings, self
+        )
+        self._formatter_window.show()
 
     # ------------------------------------------- search & gather (stage 6) --
 
@@ -1304,6 +1348,57 @@ class MainWindow(QMainWindow):
         self._reload_document_list()
         self._refresh_info()
         self.statusBar().showMessage("Renamed.", 4000)
+
+    def _on_step_chapter(self, direction: int) -> None:
+        """Ctrl+Alt+Up/Down: open the previous/next chapter of the
+        book the current document belongs to.
+
+        The chapter ORDER lives in the last saved .wvbook project (the
+        Formatter remembers it in settings) — tags mark membership,
+        but only the project knows the sequence.  With no current
+        document, +1 opens the book's first chapter."""
+        from pathlib import Path
+
+        from wordvault.formatter.book import BookProject, BookProjectError
+
+        last = str(self._settings.value("formatter/last_project", ""))
+        if not last or not Path(last).exists():
+            self.statusBar().showMessage(
+                "No book project yet — save one in Library ▸ "
+                "Book Formatter first.", 6000)
+            return
+        try:
+            project = BookProject.load(last)
+        except BookProjectError as exc:
+            self.statusBar().showMessage(str(exc), 6000)
+            return
+        uuids = [ref.uuid for ref in project.chapters]
+        if not uuids:
+            self.statusBar().showMessage(
+                "The book project has no chapters.", 6000)
+            return
+
+        if self._current_doc is not None and self._current_doc.uuid in uuids:
+            index = uuids.index(self._current_doc.uuid) + direction
+        else:
+            # Not inside the book: jump to its first or last chapter.
+            index = 0 if direction > 0 else len(uuids) - 1
+        if not (0 <= index < len(uuids)):
+            edge = "first" if index < 0 else "last"
+            self.statusBar().showMessage(
+                f"Already at the {edge} chapter of "
+                f"'{project.title}'.", 4000)
+            return
+        doc = self._store.get_document_by_uuid(uuids[index])
+        if doc is None:
+            self.statusBar().showMessage(
+                "That chapter is no longer in the library.", 6000)
+            return
+        self._autosave()
+        self._open_document(doc.id)
+        self.statusBar().showMessage(
+            f"Chapter {index + 1} of {len(uuids)} — "
+            f"'{project.title}'", 4000)
 
     def _on_step_version(self, direction: int) -> None:
         """Ctrl+Alt+Left/Right: open the previous/next draft in the

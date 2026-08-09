@@ -1,0 +1,62 @@
+# KDP 6x9 Book - the standard Amazon KDP paperback trim (6 x 9 in),
+# with the margins and type sizes measured from Andrew's Word book
+# manuscripts (out.docx): Georgia 11pt justified at 1.25 spacing,
+# 17pt chapter titles that open a fresh page, a centered page number.
+# Mirror margins put the wide 1.2" edge on the binding side of every
+# page, as a bound book requires.
+# Edit freely: this is YOUR copy (in ~/.wordvault/formats).
+# The full specification is in docs/format-file.md.
+
+[format]
+name = "KDP 6x9 Book"
+
+[page]
+size = "6x9"
+
+[page.margins]
+unit = "in"
+top = 0.7
+bottom = 0.5
+inside = 1.2
+outside = 0.7
+
+[body]
+font = "Georgia"
+size_pt = 11
+line_spacing = 1.25
+align = "justify"
+space_after_pt = 10
+
+[heading1]
+size_pt = 17
+bold = true
+page_break_before = true
+space_before_pt = 18
+space_after_pt = 13
+
+[heading2]
+size_pt = 14
+bold = true
+space_before_pt = 14
+space_after_pt = 7
+
+[heading3]
+size_pt = 12
+bold = true
+italic = true
+space_before_pt = 10
+space_after_pt = 6
+
+[quote]
+italic = true
+indent_mm = 8
+size_pt = 10.5
+space_before_pt = 6
+space_after_pt = 6
+
+[list]
+indent_mm = 7
+space_after_pt = 2
+
+[footer]
+center = "{page}"

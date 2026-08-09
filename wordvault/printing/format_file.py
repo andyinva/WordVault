@@ -35,8 +35,10 @@ FORMATS_DIR = Path.home() / ".wordvault" / "formats"
 #: Shipped starters (repo_root/formats), relative to this file.
 _SHIPPED_DIR = Path(__file__).resolve().parents[2] / "formats"
 
-#: Page sizes WordVault knows how to ask the printer for.
-PAGE_SIZES = ("Letter", "Legal", "A4", "A5", "B5")
+#: Page sizes WordVault knows how to ask the printer for.  "6x9" is
+#: the standard KDP paperback trim (6 x 9 inches) — not a size Qt
+#: names, so the renderer builds it as a custom page.
+PAGE_SIZES = ("Letter", "Legal", "A4", "A5", "B5", "6x9")
 
 _STYLE_SECTIONS = (
     "body", "heading1", "heading2", "heading3",

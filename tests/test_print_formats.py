@@ -137,6 +137,12 @@ def test_furniture_and_byline_parse(tmp_path):
     assert fmt.needs_manual_pagination()
 
 
+def test_6x9_kdp_trim_size_accepted(tmp_path):
+    fmt = load_format(write(
+        tmp_path, "[page]\nsize = '6x9'\n", "kdp.wvfmt"))
+    assert fmt.page_size == "6x9"
+
+
 def test_plain_format_needs_no_manual_pagination(tmp_path):
     fmt = load_format(write(tmp_path, GOOD))
     assert not fmt.needs_manual_pagination()

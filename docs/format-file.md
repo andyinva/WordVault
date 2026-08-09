@@ -31,7 +31,9 @@ reports exactly what is wrong (`FormatError`).
 name = "Essay"                    # shown in the print chooser
 
 [page]
-size = "Letter"                   # Letter | Legal | A4 | A5 | B5
+size = "Letter"                   # Letter | Legal | A4 | A5 | B5 | 6x9
+                                  # ("6x9" is the Amazon KDP paperback
+                                  #  trim, 6 x 9 inches)
 margins_mm = [25, 20, 25, 20]     # shorthand: top, right, bottom, left, mm
 
 # OR the full Word-style margins table (either one, not both):

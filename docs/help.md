@@ -124,6 +124,35 @@ sittings.
   list, Outline, Document Info, and Library Info — clear the decks for
   full-width writing whenever you wish.
 
+### Making a book
+
+- **Library ▸ Book Formatter…** (Ctrl+Shift+B) opens the book
+  assembler: pick documents from the library, put them in chapter
+  order, choose a print format, and **Build Book PDF**. Each chapter
+  starts on a fresh page.
+- The recipe saves as a **.wvbook project file** — reopen it and the
+  chapters are pulled fresh from the library, so a chapter edited in
+  WordVault is automatically current at the next build.
+- **Saving a project tags its chapters** with `Book: <title>`, so
+  membership shows in the Library. Tag essays yourself (Document ▸
+  Edit Tags…) as book ideas form, then **Add All by Tag…** in the
+  Formatter gathers them as chapters in one step.
+- **Document ▸ Previous/Next Chapter in Book** (Ctrl+Alt+Up/Down)
+  walks the book's chapters in order — twelve essays read like one
+  book, while every edit lands in exactly one place.
+- **Create Draft Document** assembles the chapters into a single
+  library document — a read-through snapshot for judging flow. It is
+  an output, like a printed proof: make fixes in the chapter essays,
+  then create a fresh draft.
+- **Title page and Copyright page** checkboxes add real front matter:
+  the title large and centered on page one, and a quiet copyright
+  block on page two — fill in the ISBN, year, edition, rights line,
+  and Scripture-translation notice under **Copyright Details…**.
+  Front-matter pages print silently (no header or page number), and
+  the chapters' page numbers still start at 1, as in a real book.
+- Coming soon (the grayed checkboxes show the plan): table of
+  contents, subject index, scripture index, and a KDP cover.
+
 ### Keeping your work safe
 
 - **File ▸ Back Up Library…** writes everything into one encrypted file.
