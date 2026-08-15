@@ -38,6 +38,27 @@ def test_help_document_exists_and_has_both_parts():
     assert "Part 2" in text and "Using" in text
 
 
+def test_user_guide_covers_philosophy_and_features():
+    """The full User Guide (Shift+F1): philosophy first, then every
+    feature area, plus the shortcut table."""
+    from wordvault.editor.help_dialog import _GUIDE_FILE
+
+    text = _GUIDE_FILE.read_text(encoding="utf-8")
+    assert "Philosophy" in text
+    for phrase in ("Nothing is ever lost", "Time Travel", "The Library",
+                   "Making a Book", "Keyboard shortcuts", ".wvfmt",
+                   "notes pane", "Gather", "Scripture"):
+        assert phrase in text, f"guide is missing '{phrase}'"
+
+
+def test_guide_dialog_opens(qapp):
+    from wordvault.editor.help_dialog import _GUIDE_FILE
+
+    dlg = HelpDialog(None, document=_GUIDE_FILE,
+                     title="WordVault User Guide")
+    assert dlg.windowTitle() == "WordVault User Guide"
+
+
 def test_help_dialog_opens(qapp):
     HelpDialog()   # constructing it loads and renders the markdown
 
@@ -93,6 +114,19 @@ def test_plain_settings_pass_through(qapp):
     assert dlg.result() == 1
     assert dlg.idle_seconds == 7 and dlg.font_size == 14
     assert not dlg.wants_encryption
+
+
+def test_reopen_last_switch(qapp):
+    """The start-where-you-left-off switch: on by default, honored
+    when handed a remembered value, reported after a change."""
+    dlg = _dialog(qapp)
+    assert dlg.reopen_last is True             # the shipped default
+
+    dlg = SettingsDialog(None, encrypted=False, idle_seconds=3,
+                         font_size=12, reopen_last=False)
+    assert dlg.reopen_last is False
+    dlg._reopen_box.setChecked(True)
+    assert dlg.reopen_last is True
 
 
 def test_recent_limit_default_and_change(qapp):

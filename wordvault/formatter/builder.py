@@ -120,6 +120,7 @@ def build_book_pdf(store, project: BookProject, out_path: str | Path) -> None:
     from wordvault.printing.renderer import (
         apply_page_setup,
         build_print_document,
+        collect_headings,
         print_book,
     )
 
@@ -133,7 +134,12 @@ def build_book_pdf(store, project: BookProject, out_path: str | Path) -> None:
     date_str = datetime.now().strftime("%B %d, %Y")
     body = build_print_document(markdown, fmt, title=project.title,
                                 author=project.author, date_str=date_str)
-    front = build_front_matter(fmt, project)
+    # The table of contents reads its page numbers off the body's OWN
+    # print layout — body numbering restarts at 1 after front matter,
+    # so the TOC's length can never shift the numbers it reports.
+    toc_entries = (collect_headings(body, fmt)
+                   if project.sections.get("toc") else None)
+    front = build_front_matter(fmt, project, toc_entries)
 
     if front is None and not fmt.needs_manual_pagination():
         # A plain format with no front matter: Qt can paginate alone.

@@ -1,10 +1,11 @@
 """
-help_dialog.py — the Help window (toolbar button / F1).
+help_dialog.py — the Help window (F1) and the User Guide (Shift+F1).
 
-Renders docs/help.md — a plain-language guide in two parts: the concept
-(what WordVault is and why), then the use (how to do things).  The
-document is ordinary Markdown in the repository, so contributors can
-improve the help without touching any code.
+Renders a Markdown document from docs/: help.md is the quick
+two-part orientation, guide.md the complete User Guide — philosophy
+first, then every feature in detail.  Both are ordinary Markdown in
+the repository, so contributors can improve them without touching any
+code.
 """
 
 from __future__ import annotations
@@ -13,8 +14,10 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QDialog, QPushButton, QTextBrowser, QVBoxLayout
 
-#: repo_root/docs/help.md  (this file is wordvault/editor/help_dialog.py)
-_HELP_FILE = Path(__file__).resolve().parents[2] / "docs" / "help.md"
+#: repo_root/docs/  (this file is wordvault/editor/help_dialog.py)
+_DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+_HELP_FILE = _DOCS_DIR / "help.md"
+_GUIDE_FILE = _DOCS_DIR / "guide.md"
 
 _FALLBACK = (
     "# WordVault Help\n\nThe help document (docs/help.md) was not found "
@@ -27,17 +30,20 @@ _FALLBACK = (
 
 
 class HelpDialog(QDialog):
-    """A read-only viewer for the help document."""
+    """A read-only viewer for a Markdown help document.  Defaults to
+    the quick help; pass document=_GUIDE_FILE for the full guide."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, document: Path | None = None,
+                 title: str = "WordVault Help"):
         super().__init__(parent)
-        self.setWindowTitle("WordVault Help")
-        self.resize(700, 640)
+        self.setWindowTitle(title)
+        self.resize(760, 680)
 
         viewer = QTextBrowser(self)
         viewer.setOpenExternalLinks(True)
         try:
-            viewer.setMarkdown(_HELP_FILE.read_text(encoding="utf-8"))
+            viewer.setMarkdown(
+                (document or _HELP_FILE).read_text(encoding="utf-8"))
         except OSError:
             viewer.setMarkdown(_FALLBACK)
 

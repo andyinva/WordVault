@@ -199,8 +199,18 @@ def build_print_document(
 
         if heading:
             flush_paragraph()
-            style = fmt.style_for_heading(len(heading.group(1)))
+            level = len(heading.group(1))
+            style = fmt.style_for_heading(level)
             _write_block(cursor, style, heading.group(2).strip(), first)
+            # Tag the block with its heading level (an invisible block
+            # property) so collect_headings() can find every heading —
+            # and its true page — after layout.  This is what makes
+            # the table of contents honest by construction.
+            from PyQt6.QtGui import QTextFormat
+
+            block_fmt = cursor.blockFormat()
+            block_fmt.setProperty(QTextFormat.Property.UserProperty, level)
+            cursor.setBlockFormat(block_fmt)
             first = False
             write_byline()               # the byline follows the title
         elif quote:
@@ -315,6 +325,46 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
                title=title, author=author)
 
 
+def text_area_pt(fmt: PrintFormat) -> tuple[float, float]:
+    """The text column's (width, height) in points — the page size the
+    manual paginator lays documents out at.  One definition, used by
+    print_book, collect_headings, and the front-matter builder, so
+    they can never disagree about where pages break."""
+    paper_pt = _qt_page_size(fmt.page_size).sizePoints()
+    width = paper_pt.width() - fmt.margins.text_width_deduction() * _MM_TO_PT
+    height = (paper_pt.height()
+              - (fmt.margins.top + fmt.margins.bottom) * _MM_TO_PT)
+    return width, height
+
+
+def collect_headings(document, fmt: PrintFormat):
+    """Lay the body out at its print size and report every heading as
+    (level, text, page_number) — page numbers as the READER will see
+    them (starting at 1 on the first chapter page).
+
+    This is the fact-gathering half of the table of contents: the
+    numbers come from the same layout the printer paints, so they are
+    correct by construction — no refresh step, ever."""
+    from PyQt6.QtCore import QSizeF
+    from PyQt6.QtGui import QTextFormat
+
+    width, height = text_area_pt(fmt)
+    document.setPageSize(QSizeF(width, height))
+    layout = document.documentLayout()
+
+    headings = []
+    block = document.firstBlock()
+    while block.isValid():
+        level = block.blockFormat().property(
+            QTextFormat.Property.UserProperty)
+        if level:
+            y = layout.blockBoundingRect(block).y()
+            headings.append((int(level), block.text(),
+                             int(y // height) + 1))
+        block = block.next()
+    return headings
+
+
 def print_book(printer, fmt: PrintFormat, *, body_document,
                front_document=None, title: str = "",
                author: str = "") -> None:
@@ -347,9 +397,7 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
     printer.setFullPage(True)
 
     paper_pt = _qt_page_size(fmt.page_size).sizePoints()  # QSize, points
-    text_w_pt = paper_pt.width() - fmt.margins.text_width_deduction() * _MM_TO_PT
-    text_h_pt = (paper_pt.height()
-                 - (fmt.margins.top + fmt.margins.bottom) * _MM_TO_PT)
+    text_w_pt, text_h_pt = text_area_pt(fmt)
 
     # (document, carries furniture?) in printing order.
     sections = []

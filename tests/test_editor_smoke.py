@@ -190,6 +190,63 @@ def test_timeline_arrow_buttons_step(window_with_history):
     assert window._editor.toPlainText() == "state 2\n"
 
 
+def test_note_anchoring_and_jump_back(qapp, tmp_path):
+    """Notes anchored to the text (Aug 2026): the first keystroke of a
+    note stamps it with the editor's cursor line and a snippet, and
+    the stamp jumps the editor back to that line."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent, QTextCursor
+
+    window = MainWindow(tmp_path / "anchor.db")
+    doc = window._store.create_document("Anchored")
+    window._store.save_revision(
+        doc.id, "first line here\nsecond line words\nthird line text\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+
+    # Park the editor's cursor on line 2, then type into the notes.
+    block = window._editor.document().findBlockByNumber(1)
+    window._editor.setTextCursor(QTextCursor(block))
+    press = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_A,
+                      Qt.KeyboardModifier.NoModifier, "a")
+    QApplication.sendEvent(window._notes, press)
+
+    note = window._notes.toPlainText()
+    assert note.startswith("▸ line 2 (second line words): ")
+    assert note.endswith("a")                  # the typed letter followed
+
+    # A second keystroke on the SAME line must not stamp again.
+    QApplication.sendEvent(window._notes, press)
+    assert window._notes.toPlainText().count("▸") == 1
+
+    # The jump: a stamped line moves the editor cursor to its line.
+    window._editor.setTextCursor(
+        QTextCursor(window._editor.document().firstBlock()))
+    assert window._jump_to_note_anchor("▸ line 3 (third): my note")
+    assert window._editor.textCursor().blockNumber() == 2
+    assert not window._jump_to_note_anchor("an ordinary note line")
+    window.close()
+
+
+def test_window_title_carries_version_and_tagline(window_with_history):
+    from wordvault import RELEASE_DATE, TAGLINE, __version__
+
+    window, _doc = window_with_history
+    title = window.windowTitle()
+    assert __version__ in title and RELEASE_DATE in title
+    assert TAGLINE in title
+
+
+def test_title_header_shows_draft_number_and_date(window_with_history):
+    window, doc = window_with_history
+    text = window._title_label.text()
+    assert "draft 3 of 3" in text              # live: the newest state
+    window._timeline._slider.setValue(0)       # oldest draft on screen
+    assert "draft 1 of 3" in window._title_label.text()
+    window._timeline.go_newest()
+    assert "draft 3 of 3" in window._title_label.text()
+
+
 def test_autosave_refuses_in_history_mode(window_with_history):
     # The guard rail: viewing old text must never be saved as new typing.
     window, doc = window_with_history
@@ -333,7 +390,10 @@ def test_recent_menu_lists_opened_documents(window_with_sections):
 
 def test_title_header_follows_document(window_with_sections):
     window, doc = window_with_sections
-    assert window._title_label.text() == "Sections"
+    # The header opens with the title and now carries the draft
+    # number and date after it (see the draft-header test).
+    assert window._title_label.text().startswith("Sections")
+    assert "draft" in window._title_label.text()
     window._on_close_document()
     assert window._title_label.text() == "No document open"
 
@@ -393,7 +453,7 @@ def test_window_state_persists_across_sessions(qapp, tmp_path):
         assert window2._library_list_dock.isHidden()
         assert window2._current_doc is not None
         assert window2._current_doc.title == "Resume Me"
-        assert window2._title_label.text() == "Resume Me"
+        assert window2._title_label.text().startswith("Resume Me")
         window2._library_list_dock.show()        # tidy up for later tests
         window2.close()
     finally:

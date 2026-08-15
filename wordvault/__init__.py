@@ -16,7 +16,13 @@ from wordvault.models import Document, Revision, SourceLink, Tag
 from wordvault.storage.store import DocumentStore
 from wordvault.storage.walker import RevisionWalker
 
-__version__ = "0.1.0"
+#: The program's version, shown in the window title.  Bump the number
+#: and refresh the date together when cutting a release.
+__version__ = "1.0"
+RELEASE_DATE = "August 15, 2026"
+
+#: The motto that follows the version everywhere it appears.
+TAGLINE = "A professional writer's open-source friend"
 
 __all__ = [
     "DocumentStore",
@@ -26,4 +32,6 @@ __all__ = [
     "SourceLink",
     "Tag",
     "__version__",
+    "RELEASE_DATE",
+    "TAGLINE",
 ]

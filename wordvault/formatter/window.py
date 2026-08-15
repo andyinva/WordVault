@@ -65,7 +65,7 @@ _SECTION_LABELS = {
 }
 
 #: Sections whose stage has shipped — their checkboxes are live.
-_LIVE_SECTIONS = {"title_page", "copyright"}
+_LIVE_SECTIONS = {"title_page", "copyright", "toc"}
 
 
 class FormatterWindow(QDialog):
@@ -469,6 +469,15 @@ class FormatterWindow(QDialog):
         notice_edit.setPlaceholderText(
             "e.g. Scripture quotations are from the King James Version.")
         form.addRow("Scripture notice:", notice_edit)
+        qr_check = QCheckBox(
+            "Include QR code (the book's typesetting recipe)")
+        qr_check.setChecked(cp.include_qr)
+        qr_check.setToolTip(
+            "Prints a small QR code at the foot of the copyright page\n"
+            "holding title, author, ISBN, and the .wvfmt format text —\n"
+            "the book carries how to rebuild its own layout.\n"
+            "Needs the 'qrcode' package:  pip install qrcode")
+        form.addRow(qr_check)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
@@ -482,6 +491,7 @@ class FormatterWindow(QDialog):
             cp.edition = edition_edit.text().strip()
             cp.rights = rights_edit.text().strip()
             cp.scripture_notice = notice_edit.text().strip()
+            cp.include_qr = qr_check.isChecked()
 
     # -- the draft snapshot ----------------------------------------------
 

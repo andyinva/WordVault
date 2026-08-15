@@ -46,6 +46,7 @@ class SettingsDialog(QDialog):
         font_size: int,
         author: str = "",
         recent_limit: int = 25,
+        reopen_last: bool = True,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -75,6 +76,12 @@ class SettingsDialog(QDialog):
         self._recent_spin.setSuffix(" documents")
         self._recent_spin.setValue(recent_limit)
 
+        # Start where you left off — or with a clean desk.
+        self._reopen_box = QCheckBox(
+            "Reopen the last document when WordVault starts", self
+        )
+        self._reopen_box.setChecked(reopen_last)
+
         # --- encryption ---
         self._enc_box = QCheckBox(
             "Encrypt the library on disk (passphrase asked at startup)", self
@@ -100,6 +107,7 @@ class SettingsDialog(QDialog):
         form.addRow("Auto-save after a pause of:", self._idle_spin)
         form.addRow("Editor font size:", self._font_spin)
         form.addRow("Recent list remembers:", self._recent_spin)
+        form.addRow(self._reopen_box)
         form.addRow(self._enc_box)
         form.addRow(self._pw_label, self._pw_edit)
         form.addRow(self._pw_confirm_label, self._pw_confirm)
@@ -136,6 +144,10 @@ class SettingsDialog(QDialog):
     @property
     def recent_limit(self) -> int:
         return self._recent_spin.value()
+
+    @property
+    def reopen_last(self) -> bool:
+        return self._reopen_box.isChecked()
 
     @property
     def wants_encryption(self) -> bool:

@@ -62,6 +62,10 @@ class CopyrightInfo:
     #: Bible-translation credit line, e.g. the NKJV notice.  KJV needs
     #: none (public domain); most modern translations require one.
     scripture_notice: str = ""
+    #: Print a QR code on the copyright page carrying the book's
+    #: typesetting recipe (the .wvfmt text + title/author/ISBN/date) —
+    #: the book physically carries how to rebuild its own layout.
+    include_qr: bool = False
 
 
 @dataclass
@@ -99,6 +103,7 @@ class BookProject:
                 "edition": self.copyright.edition,
                 "rights": self.copyright.rights,
                 "scripture_notice": self.copyright.scripture_notice,
+                "include_qr": self.copyright.include_qr,
             },
             "vocabulary_path": self.vocabulary_path,
         }
@@ -161,5 +166,6 @@ class BookProject:
             edition=str(cp.get("edition", "")),
             rights=str(cp.get("rights", "All rights reserved.")),
             scripture_notice=str(cp.get("scripture_notice", "")),
+            include_qr=bool(cp.get("include_qr", False)),
         )
         return project

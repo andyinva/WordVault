@@ -13,8 +13,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wordvault"
-version = "0.1.0"
-description = "A version-tracking plain-text writing environment backed by SQLite."
+version = "1.0"
+description = "A version-tracking plain-text writing environment backed by SQLite — a professional writer's open-source friend."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

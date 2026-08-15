@@ -134,6 +134,14 @@ sittings.
   document. Jot reminders, questions, and plans there — notes save
   themselves, travel with the document, and never appear in the text or
   its revisions.
+- **Notes know their place**: start a note (type on an empty line) and
+  it is stamped with where your cursor stood in the text — like
+  "▸ line 143 (The trust is not always…): ". Double-click a stamped
+  line later and the editor jumps back to that spot. The quoted words
+  help you find the place even after line numbers drift.
+- **The title header** shows which state of the document is on screen:
+  "draft 12 of 87 — Aug 9, 2026, 3:14 PM". While time traveling it
+  names the old draft you are viewing.
 - **The title header**: the open document's name sits fixed at the top
   in a serif face; the text scrolls beneath it, so you always know what
   you are working in.
@@ -167,11 +175,23 @@ sittings.
   and Scripture-translation notice under **Copyright Details…**.
   Front-matter pages print silently (no header or page number), and
   the chapters' page numbers still start at 1, as in a real book.
-- Coming soon (the grayed checkboxes show the plan): table of
-  contents, subject index, scripture index, and a KDP cover.
+- **QR code** (Copyright Details ▸ Include QR code): a small code at
+  the foot of the copyright page holding the book's title, author,
+  ISBN, and the exact .wvfmt format used to print it — the book
+  carries the recipe for its own layout, with a caption explaining
+  so. Needs the free 'qrcode' package (`pip install qrcode`).
+- **Table of contents** builds itself: every chapter and section
+  heading with its true page number, read from the same layout the
+  printer paints — no refresh step, ever. It sits on its own page
+  after the copyright page.
+- Coming soon (the grayed checkboxes show the plan): subject index,
+  scripture index, and a KDP cover.
 
 ### Keeping your work safe
 
+- **Starting up**, WordVault reopens the document you were last working
+  on. Prefer a clean desk each morning? Turn off "Reopen the last
+  document" in Help ▸ Settings….
 - **File ▸ Recent** lists the documents you opened last, newest first.
   How far back it remembers is a Settings knob ("Recent list
   remembers", 25 documents unless you change it).

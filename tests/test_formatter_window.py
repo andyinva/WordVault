@@ -158,6 +158,66 @@ def test_create_draft_document(window, store, monkeypatch):
     assert "Chapter text." in text and "A short preface." in text
 
 
+def test_collect_headings_reports_true_pages(qapp, tmp_path):
+    """The TOC's fact-gatherer: headings come back with the page the
+    print layout ACTUALLY puts them on — a heading pushed past page
+    one by 300 paragraphs must report a later page."""
+    from wordvault.printing.format_file import load_format
+    from wordvault.printing.renderer import (
+        build_print_document,
+        collect_headings,
+    )
+
+    fmt_path = tmp_path / "t.wvfmt"
+    fmt_path.write_text("[body]\nsize_pt = 11\n", encoding="utf-8")
+    fmt = load_format(fmt_path)
+
+    filler = "\n\n".join(f"Paragraph {i} of the chapter." for i in range(300))
+    markdown = ("# Chapter One\n\nShort.\n\n## Early Section\n\n"
+                + filler + "\n\n# Chapter Two\n\nEnd.\n")
+    document = build_print_document(markdown, fmt)
+    headings = collect_headings(document, fmt)
+
+    assert [(lvl, text) for lvl, text, _p in headings] == [
+        (1, "Chapter One"), (2, "Early Section"), (1, "Chapter Two")]
+    pages = [p for _l, _t, p in headings]
+    assert pages[0] == 1 and pages[1] == 1
+    assert pages[2] > 1                     # pushed deep by the filler
+    assert pages == sorted(pages)           # pages never run backwards
+
+
+def test_toc_section_in_front_matter(qapp):
+    """The Contents page: fresh page after title/copyright, levels 1-2
+    only, each line 'title <tab> page'."""
+    from PyQt6.QtGui import QTextBlockFormat
+
+    from wordvault.formatter.frontmatter import build_front_matter
+    from wordvault.printing.format_file import PrintFormat
+
+    project = BookProject(title="My Book", author="A. H.")
+    project.sections["title_page"] = True
+    project.sections["toc"] = True
+    entries = [(1, "Chapter One", 1), (2, "A Section", 3),
+               (1, "Chapter Two", 9), (3, "Too Deep", 4)]
+    document = build_front_matter(PrintFormat(name="T"), project, entries)
+
+    blocks = []
+    block = document.firstBlock()
+    while block.isValid():
+        blocks.append(block)
+        block = block.next()
+    texts = [b.text() for b in blocks]
+
+    contents_at = texts.index("Contents")
+    assert blocks[contents_at].blockFormat().pageBreakPolicy() == \
+        QTextBlockFormat.PageBreakFlag.PageBreak_AlwaysBefore
+    assert texts[contents_at + 1:] == [
+        "Chapter One\t1", "A Section\t3", "Chapter Two\t9"]  # no level 3
+    # The section line is indented; chapter lines are not.
+    assert blocks[contents_at + 2].blockFormat().leftMargin() > 0
+    assert blocks[contents_at + 1].blockFormat().leftMargin() == 0
+
+
 def test_front_matter_document(qapp):
     """Title page and copyright page as styled blocks: title large and
     centered, byline beneath, then the quiet copyright block opening
@@ -198,6 +258,52 @@ def test_front_matter_document(qapp):
     # And the title is display-sized, not body-sized.
     it = blocks[0].begin()
     assert it.fragment().charFormat().font().pointSizeF() == 24.0
+
+
+def test_copyright_qr_image_and_caption(qapp, tmp_path):
+    """The QR provenance mark: with include_qr on, the copyright page
+    gains an image block and the explanatory caption; the payload the
+    image encodes carries title/ISBN and the .wvfmt text."""
+    pytest.importorskip("qrcode")
+
+    import json
+
+    from wordvault.formatter import frontmatter as fm
+    from wordvault.printing.format_file import load_format
+
+    fmt_path = tmp_path / "t.wvfmt"
+    fmt_path.write_text("[format]\nname = 'QR Test'\n", encoding="utf-8")
+    fmt = load_format(fmt_path)
+
+    project = BookProject(title="My Book", author="A. H.")
+    project.sections["copyright"] = True
+    project.copyright.isbn = "979-8-1111-2222-3"
+    project.copyright.include_qr = True
+
+    payload = json.loads(fm._qr_payload(fmt, project))
+    assert payload["title"] == "My Book"
+    assert payload["isbn"] == "979-8-1111-2222-3"
+    assert "name = 'QR Test'" in payload["wvfmt"]
+
+    document = fm.build_front_matter(fmt, project)
+    texts = []
+    has_image = False
+    block = document.firstBlock()
+    while block.isValid():
+        texts.append(block.text())
+        it = block.begin()
+        while not it.atEnd():
+            if it.fragment().charFormat().isImageFormat():
+                has_image = True
+            it += 1
+        block = block.next()
+    assert has_image, "no QR image found on the copyright page"
+    assert any(fm.QR_CAPTION[:30] in t for t in texts)
+
+    # Round trip: the project file remembers the choice.
+    path = tmp_path / "p.wvbook"
+    project.save(path)
+    assert BookProject.load(path).copyright.include_qr is True
 
 
 def test_build_book_pdf_writes_a_real_pdf(qapp, store, tmp_path, monkeypatch):
@@ -248,6 +354,7 @@ def test_build_with_front_matter_adds_silent_pages(qapp, store, tmp_path,
                           format_name="KDP 6x9 Book")
     project.sections["title_page"] = True
     project.sections["copyright"] = True
+    project.sections["toc"] = True
     project.copyright.isbn = "979-8-0000-0000-0"
     project.chapters = [
         ChapterRef(docs["Preface"].uuid, "Preface"),
@@ -256,4 +363,5 @@ def test_build_with_front_matter_adds_silent_pages(qapp, store, tmp_path,
     out = tmp_path / "book_fm.pdf"
     build_book_pdf(store, project, out)
     pages = len(re.findall(rb"/Type /Page\b(?!s)", out.read_bytes()))
-    assert pages >= 4, f"expected front matter + chapters, got {pages} pages"
+    # Title + copyright + contents + two chapter pages.
+    assert pages >= 5, f"expected front matter + chapters, got {pages} pages"

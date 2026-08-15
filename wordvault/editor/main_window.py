@@ -99,7 +99,12 @@ class MainWindow(QMainWindow):
         self._navigating = False   # re-entrancy guard for slider handling
         self._search_dialog = None  # created on first Ctrl+Shift+F, then reused
 
-        self.setWindowTitle("WordVault")
+        # The program announces itself: version, release date, motto.
+        from wordvault import RELEASE_DATE, TAGLINE, __version__
+
+        self.setWindowTitle(
+            f"WordVault {__version__} ({RELEASE_DATE}) — {TAGLINE}"
+        )
         self.resize(1000, 700)
 
         self._build_central_area()
@@ -150,8 +155,11 @@ class MainWindow(QMainWindow):
         if split is not None:
             self._split.restoreState(split)
 
+        # Reopen the document you were working on — unless the Settings
+        # switch says to start with a clean desk (default: reopen).
         last = self._settings.value(f"last_doc:{self._library_path}")
-        if last is not None:
+        if last is not None and self._settings.value(
+                "reopen_last", True, type=bool):
             try:
                 self._open_document(int(last))
             except (KeyError, ValueError):
@@ -237,6 +245,13 @@ class MainWindow(QMainWindow):
             if not self._notes.signalsBlocked() else None
         )
 
+        # Anchored notes: starting a note on an empty line stamps it
+        # with the editor's current cursor position ("▸ line 143 (…): ")
+        # and double-clicking such a stamp jumps the editor there.
+        # Both behaviors live in eventFilter().
+        self._notes.installEventFilter(self)
+        self._notes.viewport().installEventFilter(self)
+
         self._split = QSplitter(Qt.Orientation.Vertical, self)
         self._split.addWidget(self._editor)
         self._split.addWidget(self._notes)
@@ -262,6 +277,66 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._find_bar)
         layout.addWidget(self._timeline)
         self.setCentralWidget(container)
+
+    # ------------------------------------------ notes anchored to the text --
+
+    def eventFilter(self, obj, event):  # noqa: N802 (Qt naming)
+        """Two small notes-pane behaviors (installed in __init__):
+
+        * typing the FIRST character of a note (an empty line) stamps
+          it with where the editor's cursor stands — the note is
+          associated with that place in the document;
+        * double-clicking a stamped line jumps the editor back there.
+        """
+        from PyQt6.QtCore import QEvent
+
+        if obj is self._notes and event.type() == QEvent.Type.KeyPress:
+            text = event.text()
+            if (text and text.isprintable()
+                    and self._current_doc is not None
+                    and self._notes.textCursor().block().text() == ""):
+                self._notes.textCursor().insertText(
+                    self._note_anchor_prefix())
+        elif (obj is self._notes.viewport()
+                and event.type() == QEvent.Type.MouseButtonDblClick):
+            cursor = self._notes.cursorForPosition(
+                event.position().toPoint())
+            if self._jump_to_note_anchor(cursor.block().text()):
+                return True                    # handled: don't select text
+        return super().eventFilter(obj, event)
+
+    def _note_anchor_prefix(self) -> str:
+        """The stamp for a new note: the editor's cursor line plus a
+        snippet of that line's words (line numbers drift as a document
+        grows — the quoted words let you find the place again)."""
+        cursor = self._editor.textCursor()
+        line = cursor.blockNumber() + 1
+        words = cursor.block().text().strip()
+        snippet = (words[:24].rstrip() + "…") if len(words) > 24 else words
+        where = f"▸ line {line}"
+        if snippet:
+            where += f" ({snippet})"
+        return where + ": "
+
+    def _jump_to_note_anchor(self, note_line: str) -> bool:
+        """If note_line carries a '▸ line N' stamp, move the editor
+        there (clamped to the document's end) and center it.  Returns
+        True when a jump happened."""
+        import re as _re
+
+        from PyQt6.QtGui import QTextCursor
+
+        match = _re.match(r"▸ line (\d+)", note_line)
+        if not match:
+            return False
+        number = min(int(match.group(1)) - 1,
+                     self._editor.document().blockCount() - 1)
+        block = self._editor.document().findBlockByNumber(max(0, number))
+        cursor = QTextCursor(block)
+        self._editor.setTextCursor(cursor)
+        self._editor.centerCursor()
+        self._editor.setFocus()
+        return True
 
     def _save_current_note(self) -> None:
         """Persist the notes pane for the open document (no-op unchanged)."""
@@ -642,6 +717,14 @@ class MainWindow(QMainWindow):
         help_action.setToolTip("How WordVault works — the concept and the use (F1)")
         help_action.triggered.connect(self._on_help)
 
+        guide_action = QAction("&User Guide", self)
+        guide_action.setShortcut("Shift+F1")
+        guide_action.setToolTip(
+            "The complete guide: the philosophy, and every feature "
+            "in detail (Shift+F1)"
+        )
+        guide_action.triggered.connect(self._on_user_guide)
+
         settings_action = QAction("&Settings…", self)
         settings_action.setToolTip(
             "Auto-save pause, font size, and library encryption"
@@ -656,6 +739,7 @@ class MainWindow(QMainWindow):
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(help_action)
+        help_menu.addAction(guide_action)
         help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
 
@@ -663,6 +747,14 @@ class MainWindow(QMainWindow):
         from wordvault.editor.help_dialog import HelpDialog
 
         HelpDialog(self).exec()
+
+    def _on_user_guide(self) -> None:
+        """The complete User Guide: the philosophy, then every feature
+        in detail — for sitting down with (docs/guide.md)."""
+        from wordvault.editor.help_dialog import _GUIDE_FILE, HelpDialog
+
+        HelpDialog(self, document=_GUIDE_FILE,
+                   title="WordVault User Guide").exec()
 
     def _on_settings(self) -> None:
         """Open Settings; apply and persist whatever was chosen."""
@@ -677,6 +769,7 @@ class MainWindow(QMainWindow):
             font_size=self._editor.font().pointSize(),
             author=str(self._settings.value("author", "")),
             recent_limit=self._recent_limit(),
+            reopen_last=self._settings.value("reopen_last", True, type=bool),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -688,6 +781,7 @@ class MainWindow(QMainWindow):
         self._settings.setValue("font_pt", dialog.font_size)
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
+        self._settings.setValue("reopen_last", dialog.reopen_last)
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).
@@ -883,7 +977,7 @@ class MainWindow(QMainWindow):
         self._go_live()
         self._set_editor_enabled(True)
         self._load_note(doc_id)
-        self._title_label.setText(self._current_doc.title)
+        self._refresh_title_header()
         self._editor.setFocus()
 
     # -------------------------------------------------- time travel (new) --
@@ -906,6 +1000,7 @@ class MainWindow(QMainWindow):
             _local_time(self._revisions[-1].created_utc) + " · newest"
             if self._revisions else "no revisions yet"
         )
+        self._refresh_title_header()
         self._update_status()
         # Stage 7 panels track the live document.
         self._editor.clear_focus_lines()
@@ -984,6 +1079,7 @@ class MainWindow(QMainWindow):
                 _local_time(rev.created_utc)
                 + (" · newest" if live else f" · {rev.origin}")
             )
+            self._refresh_title_header()
             self._update_status()
             # Hoist and age tinting refer to the LIVE text; entering
             # history clears both (age colors return on going live).
@@ -992,6 +1088,29 @@ class MainWindow(QMainWindow):
             self._apply_age_colors()
         finally:
             self._navigating = False
+
+    def _refresh_title_header(self) -> None:
+        """The serif title header also announces WHICH state of the
+        document is on screen: 'draft N of M — date'.  While time
+        traveling it names the viewed old draft, so the header always
+        answers 'what am I looking at?'."""
+        from html import escape
+
+        if self._current_doc is None:
+            self._title_label.setText("No document open")
+            return
+        title = escape(self._current_doc.title)
+        total = len(self._revisions)
+        if not total:
+            self._title_label.setText(title)
+            return
+        index = total - 1 if self._is_live else \
+            max(0, min(self._timeline.position(), total - 1))
+        stamp = _local_time(self._revisions[index].created_utc)
+        suffix = f"draft {index + 1} of {total} — {stamp}"
+        self._title_label.setText(
+            f"{title}&nbsp;&nbsp;<span style='font-size:9pt; "
+            f"font-weight:normal; color:#5a6b7d;'>{suffix}</span>")
 
     def _restore_history_scroll(self) -> None:
         """Re-apply the view position noted before a history step (see
@@ -1435,7 +1554,7 @@ class MainWindow(QMainWindow):
             return
         self._store.rename_document(self._current_doc.id, title.strip())
         self._current_doc = self._store.get_document(self._current_doc.id)
-        self._title_label.setText(self._current_doc.title)
+        self._refresh_title_header()
         self._reload_document_list()
         self._refresh_info()
         self.statusBar().showMessage("Renamed.", 4000)
@@ -2041,6 +2160,7 @@ class MainWindow(QMainWindow):
         if self._commit_live_text() is not None:
             # History grew: extend the slider, staying parked at the end.
             self._revisions = self._store.list_revisions(self._current_doc.id)
+            self._refresh_title_header()   # draft count and date advanced
             self._timeline.set_range(len(self._revisions), len(self._revisions) - 1)
             self._timeline.set_info(
                 _local_time(self._revisions[-1].created_utc) + " · newest"
