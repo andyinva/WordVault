@@ -52,7 +52,24 @@ bullet list and **Ctrl+Shift+Q** a quote. Enter inside a list continues
 it; Enter on an empty item ends it. These marks are how formatting
 survives into the future Formatter — the text itself stays plain.
 
+### Knowing where your typing goes
+
+The pane that will receive your typing wears a **blue border** when
+you click into it — the document text or the notes pane. While you are
+viewing an **old version**, the text wears an **amber border** instead
+and is read-only: you can click, select, and **copy** from the past
+(paste into the notes pane right away, or into the text after
+returning), but the past itself cannot be edited. The two blue-lit
+buttons on the timeline — **Newest** and **Restore this version** —
+are the way back to editing.
+
 ### Going back in time
+
+The timeline under the editor also has **◀ ▶ arrow buttons** beside
+the slider for stepping one revision at a time. Stepping into history
+shows the **end of the document** — the growing edge, where each
+revision's changes appear. Scroll to any passage and further steps
+hold that place; return to the end and the view follows the end again.
 
 The **History bar** under the editor has one stop per revision. Drag the
 slider, or press **Alt+Left** and **Alt+Right**, to step through the
@@ -155,6 +172,9 @@ sittings.
 
 ### Keeping your work safe
 
+- **File ▸ Recent** lists the documents you opened last, newest first.
+  How far back it remembers is a Settings knob ("Recent list
+  remembers", 25 documents unless you change it).
 - **File ▸ Back Up Library…** writes everything into one encrypted file.
   Keep a recent one on a USB stick or cloud drive.
 - **Help ▸ Settings…** can turn on **library encryption**: the library

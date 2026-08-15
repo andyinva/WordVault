@@ -108,6 +108,88 @@ def test_slider_walks_history_read_only(window_with_history):
     assert window._is_live
 
 
+def test_history_mode_is_marked_and_copyable(window_with_history):
+    """The time-travel trap (Aug 2026): clicking into an old version
+    showed no cursor and no way back.  Now history mode must (a) keep
+    the text selectable WITH a keyboard cursor so copying works, (b)
+    wear the amber 'history' border, and (c) light up the timeline's
+    Newest/Restore buttons — the road back to editing."""
+    from PyQt6.QtCore import Qt
+
+    window, doc = window_with_history
+    window._timeline._slider.setValue(0)          # into the past
+
+    flags = window._editor.textInteractionFlags()
+    assert flags & Qt.TextInteractionFlag.TextSelectableByMouse
+    assert flags & Qt.TextInteractionFlag.TextSelectableByKeyboard
+    assert window._editor.property("mode") == "history"
+    assert window._timeline._newest_btn.styleSheet() != ""
+    assert window._timeline._restore_btn.styleSheet() != ""
+
+    window._timeline.go_newest()                  # and back to now
+    assert window._editor.property("mode") == "live"
+    assert not window._editor.isReadOnly()
+    assert window._timeline._newest_btn.styleSheet() == ""
+    flags = window._editor.textInteractionFlags()
+    assert flags & Qt.TextInteractionFlag.TextEditable
+
+
+def test_history_stepping_follows_the_growing_end(qapp, tmp_path):
+    """The view rule for time travel (Aug 2026): stepping into history
+    jumps to the END of the document — the cusp where essays grow, so
+    the changes show as you step.  But once the reader deliberately
+    scrolls elsewhere, further steps HOLD that place; and sitting at
+    the end keeps following the end."""
+    window = MainWindow(tmp_path / "scroll.db")
+    doc = window._store.create_document("Long")
+    lines = "\n".join(f"line {i}" for i in range(400))
+    window._store.save_revision(doc.id, lines + "\nrev one\n")
+    window._store.save_revision(doc.id, lines + "\nrev two\n")
+    window._store.save_revision(doc.id, lines + "\nrev three\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+    window.resize(600, 400)
+
+    bar = window._editor.verticalScrollBar()
+    if bar.maximum() == 0:
+        window.close()
+        pytest.skip("offscreen viewport shows the whole document")
+    middle = bar.maximum() // 2
+    bar.setValue(middle)
+
+    # The restore lands on a zero-delay timer (the fresh text has no
+    # layout yet) — give the event loop a turn after each step, as a
+    # running app would.
+    window._timeline._slider.setValue(1)          # live -> history: END
+    qapp.processEvents()
+    bar = window._editor.verticalScrollBar()
+    assert bar.value() == bar.maximum()
+
+    bar.setValue(middle)                          # reader picks a passage
+    window._timeline._slider.setValue(0)          # step again: place HELD
+    qapp.processEvents()
+    assert abs(window._editor.verticalScrollBar().value() - middle) <= 2
+
+    bar = window._editor.verticalScrollBar()
+    bar.setValue(bar.maximum())                   # back to the end...
+    window._timeline._slider.setValue(1)          # ...stays at the end
+    qapp.processEvents()
+    bar = window._editor.verticalScrollBar()
+    assert bar.value() == bar.maximum()
+    window.close()
+
+
+def test_timeline_arrow_buttons_step(window_with_history):
+    window, doc = window_with_history
+    assert window._is_live
+    window._timeline._back_btn.click()
+    assert not window._is_live                    # stepped into the past
+    assert window._editor.toPlainText() == "state 1\n"
+    window._timeline._fwd_btn.click()
+    assert window._is_live                        # and back to newest
+    assert window._editor.toPlainText() == "state 2\n"
+
+
 def test_autosave_refuses_in_history_mode(window_with_history):
     # The guard rail: viewing old text must never be saved as new typing.
     window, doc = window_with_history

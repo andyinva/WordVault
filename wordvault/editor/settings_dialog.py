@@ -5,6 +5,7 @@ A small dialog with the everyday knobs:
 
   * Auto-save pause — how many seconds of typing silence make a revision.
   * Editor font size.
+  * Recent documents — how far back File > Recent remembers.
   * Library encryption — a checkbox.  Turning it ON reveals a passphrase
     field and a verification field that must match before OK is allowed;
     turning it OFF (when currently encrypted) asks MainWindow to remove
@@ -44,6 +45,7 @@ class SettingsDialog(QDialog):
         idle_seconds: int,
         font_size: int,
         author: str = "",
+        recent_limit: int = 25,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -65,6 +67,13 @@ class SettingsDialog(QDialog):
         self._font_spin.setRange(8, 28)
         self._font_spin.setSuffix(" pt")
         self._font_spin.setValue(font_size)
+
+        # How far back File > Recent remembers (the list itself lives
+        # in QSettings; this is only its length).
+        self._recent_spin = QSpinBox(self)
+        self._recent_spin.setRange(5, 100)
+        self._recent_spin.setSuffix(" documents")
+        self._recent_spin.setValue(recent_limit)
 
         # --- encryption ---
         self._enc_box = QCheckBox(
@@ -90,6 +99,7 @@ class SettingsDialog(QDialog):
         form.addRow("Author name:", self._author_edit)
         form.addRow("Auto-save after a pause of:", self._idle_spin)
         form.addRow("Editor font size:", self._font_spin)
+        form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._enc_box)
         form.addRow(self._pw_label, self._pw_edit)
         form.addRow(self._pw_confirm_label, self._pw_confirm)
@@ -122,6 +132,10 @@ class SettingsDialog(QDialog):
     @property
     def font_size(self) -> int:
         return self._font_spin.value()
+
+    @property
+    def recent_limit(self) -> int:
+        return self._recent_spin.value()
 
     @property
     def wants_encryption(self) -> bool:

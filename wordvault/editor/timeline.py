@@ -54,8 +54,21 @@ class TimelineBar(QWidget):
         self._restore_btn = QPushButton("Restore this version", self)
         self._restore_btn.clicked.connect(self.restore_requested)
 
+        # One-step arrows flanking the slider (same moves as the
+        # Alt+Left / Alt+Right keys, for mouse-first hands).
+        self._back_btn = QPushButton("◀", self)
+        self._back_btn.setFixedWidth(28)
+        self._back_btn.setToolTip("Back one revision (Alt+Left)")
+        self._back_btn.clicked.connect(lambda: self.step(-1))
+        self._fwd_btn = QPushButton("▶", self)
+        self._fwd_btn.setFixedWidth(28)
+        self._fwd_btn.setToolTip("Forward one revision (Alt+Right)")
+        self._fwd_btn.clicked.connect(lambda: self.step(+1))
+
         layout.addWidget(QLabel("History:", self))
+        layout.addWidget(self._back_btn)
         layout.addWidget(self._slider, stretch=1)
+        layout.addWidget(self._fwd_btn)
         layout.addWidget(self._info)
         layout.addWidget(self._newest_btn)
         layout.addWidget(self._restore_btn)
@@ -90,11 +103,25 @@ class TimelineBar(QWidget):
         """Jump the slider to the newest revision."""
         self._slider.setValue(self._slider.maximum())
 
+    #: The buttons' history-mode dress: while an old version is on
+    #: screen these two are the ONLY way back to editing, so they must
+    #: be impossible to miss ("no cursor showed up" — the time-travel
+    #: trap, Aug 2026).
+    _ACCENT = (
+        "QPushButton { background: #2f6fce; color: white;"
+        "  font-weight: bold; border-radius: 3px; padding: 3px 12px; }"
+        "QPushButton:hover { background: #3d80e8; }"
+    )
+
     def set_live(self, live: bool) -> None:
         """Live = viewing (and editing) the newest state.  The buttons only
-        make sense while looking at the past."""
+        make sense while looking at the past — and while the past is on
+        screen they light up blue, pointing the way back."""
         self._restore_btn.setEnabled(not live)
         self._newest_btn.setEnabled(not live)
+        accent = "" if live else self._ACCENT
+        self._restore_btn.setStyleSheet(accent)
+        self._newest_btn.setStyleSheet(accent)
 
     def set_info(self, text: str) -> None:
         """Timestamp/origin caption next to the slider."""

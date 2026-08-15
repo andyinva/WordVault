@@ -208,7 +208,22 @@ class MainWindow(QMainWindow):
         self._notes.setFont(notes_font)
         self._notes.setStyleSheet(
             "QPlainTextEdit { background: #fbfaf4; }"
+            # Blue border = "typing goes HERE" (edit-mode indicator).
+            "QPlainTextEdit:focus { border: 2px solid #2f6fce; }"
         )
+
+        # --- edit-mode visuals on the main editor ---
+        # Blue border when focused and LIVE (your typing lands here);
+        # amber border + parchment tint while viewing an OLD version
+        # (read-only: select and copy, but the past cannot be edited —
+        # the timeline's highlighted Newest/Restore buttons lead back).
+        self._editor.setStyleSheet(
+            'QPlainTextEdit[mode="live"]:focus'
+            '  { border: 2px solid #2f6fce; }'
+            'QPlainTextEdit[mode="history"]'
+            '  { border: 2px solid #c98a00; background: #fbf6ea; }'
+        )
+        self._editor.setProperty("mode", "live")
         # Notes save themselves after a 3-second pause (their own timer —
         # editing notes must not create document revisions).
         from PyQt6.QtCore import QTimer
@@ -661,6 +676,7 @@ class MainWindow(QMainWindow):
             idle_seconds=max(1, self._editor.idle_ms() // 1000),
             font_size=self._editor.font().pointSize(),
             author=str(self._settings.value("author", "")),
+            recent_limit=self._recent_limit(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -671,6 +687,7 @@ class MainWindow(QMainWindow):
         self._settings.setValue("idle_ms", dialog.idle_seconds * 1000)
         self._settings.setValue("font_pt", dialog.font_size)
         self._settings.setValue("author", dialog.author)
+        self._settings.setValue("recent_limit", dialog.recent_limit)
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).
@@ -880,7 +897,8 @@ class MainWindow(QMainWindow):
         self._editor.set_text_quietly(
             self._store.get_text(self._revisions[-1].id) if self._revisions else ""
         )
-        self._editor.setReadOnly(False)
+        self._editor.setReadOnly(False)   # also restores full editing flags
+        self._set_edit_mode_visuals(live=True)
 
         self._timeline.set_range(len(self._revisions), len(self._revisions) - 1)
         self._timeline.set_live(True)
@@ -913,8 +931,50 @@ class MainWindow(QMainWindow):
             live = index == len(self._revisions) - 1
 
             rev = self._revisions[index]
+            # Hold the reading position across the swap: revisions of
+            # one document mostly share their lines, so restoring the
+            # same scroll value keeps the SAME PLACE in the text on
+            # screen while stepping through time (instead of snapping
+            # to page one at every step).
+            from PyQt6.QtCore import QTimer
+
+            # Where should the view sit after the step?  The document's
+            # END is the cusp of its history — essays grow at the tail,
+            # so that is where the changes show as you step.  Rule:
+            #   * stepping IN from live, or stepping while already at
+            #     the end -> pin to the end (None = "the end");
+            #   * but if you scrolled elsewhere to watch a particular
+            #     passage, further steps hold your place there.
+            bar = self._editor.verticalScrollBar()
+            at_end = bar.value() >= bar.maximum() - 2
+            self._pending_scroll = (None if self._is_live or at_end
+                                    else bar.value())
             self._editor.set_text_quietly(self._store.get_text(rev.id))
+
+            # Twice on purpose: once now (best effort), and once after
+            # the event loop lets the new text finish laying out — at
+            # THIS moment the scrollbar's maximum is still 0, so an
+            # immediate restore alone gets clamped back to page one
+            # (the very bug being fixed).  The deferred call MUST be a
+            # bound method (not a closure): PyQt ties the timer to this
+            # window's lifetime, so a window closed before the timer
+            # fires cancels it instead of crashing on dead widgets.
+            self._restore_history_scroll()
+            QTimer.singleShot(0, self._restore_history_scroll)
             self._editor.setReadOnly(not live)
+            if not live:
+                # Read-only, but NOT dead: keyboard selection gives a
+                # visible cursor, so clicking into an old version shows
+                # where you are, and Ctrl+C copies — paste into the
+                # notes pane now, or into the text after Newest.
+                self._editor.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                    | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+            self._set_edit_mode_visuals(live=live)
+            if not live:
+                self.statusBar().showMessage(
+                    "Viewing an old version (read-only). Select and copy "
+                    "freely — click Newest or Restore to edit again.", 8000)
             self._is_live = live
 
             # Keep the slider consistent with the (possibly grown) history.
@@ -932,6 +992,25 @@ class MainWindow(QMainWindow):
             self._apply_age_colors()
         finally:
             self._navigating = False
+
+    def _restore_history_scroll(self) -> None:
+        """Re-apply the view position noted before a history step (see
+        _on_timeline_moved; None means "the end of the document").
+        Runs immediately AND via a 0 ms timer once layout has settled
+        and the scrollbar's true maximum exists."""
+        pos = getattr(self, "_pending_scroll", None)
+        bar = self._editor.verticalScrollBar()
+        bar.setValue(bar.maximum() if pos is None
+                     else min(pos, bar.maximum()))
+
+    def _set_edit_mode_visuals(self, live: bool) -> None:
+        """Repaint the editor's mode border (see the stylesheet where
+        the editor is built).  Qt evaluates property selectors only at
+        polish time, so changing the property must be followed by an
+        explicit unpolish/polish round trip."""
+        self._editor.setProperty("mode", "live" if live else "history")
+        self._editor.style().unpolish(self._editor)
+        self._editor.style().polish(self._editor)
 
     def _on_restore(self) -> None:
         """Append the currently VIEWED old state as a brand-new revision.
@@ -1041,11 +1120,23 @@ class MainWindow(QMainWindow):
         self._timeline.set_range(0, 0)
         self._update_status()
 
+    def _recent_limit(self) -> int:
+        """How far back File ▸ Recent remembers — a Settings knob
+        (default 25), clamped to the dialog's own 5..100 range so a
+        hand-edited registry value cannot misbehave."""
+        try:
+            value = int(self._settings.value("recent_limit", 25))
+        except (TypeError, ValueError):
+            value = 25
+        return max(5, min(100, value))
+
     def _record_recent(self, doc_id: int) -> None:
-        """Move doc_id to the front of the persisted recents (max 10)."""
+        """Move doc_id to the front of the persisted recents, trimmed
+        to the Settings limit."""
         recent = [int(x) for x in self._settings.value("recent_docs", []) or []]
         recent = [doc_id] + [d for d in recent if d != doc_id]
-        self._settings.setValue("recent_docs", [str(d) for d in recent[:10]])
+        self._settings.setValue(
+            "recent_docs", [str(d) for d in recent[: self._recent_limit()]])
 
     def _rebuild_recent_menu(self) -> None:
         """Fill File ▸ Recent when it opens (titles resolved fresh)."""

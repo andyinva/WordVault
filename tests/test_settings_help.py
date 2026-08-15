@@ -93,3 +93,18 @@ def test_plain_settings_pass_through(qapp):
     assert dlg.result() == 1
     assert dlg.idle_seconds == 7 and dlg.font_size == 14
     assert not dlg.wants_encryption
+
+
+def test_recent_limit_default_and_change(qapp):
+    """The 'Recent list remembers' knob: defaults to 25, changeable,
+    and the spin box clamps out-of-range values."""
+    dlg = _dialog(qapp)
+    assert dlg.recent_limit == 25          # the shipped default
+
+    dlg = SettingsDialog(None, encrypted=False, idle_seconds=3,
+                         font_size=12, recent_limit=40)
+    assert dlg.recent_limit == 40          # remembered value honored
+    dlg._recent_spin.setValue(60)
+    assert dlg.recent_limit == 60
+    dlg._recent_spin.setValue(1000)        # clamped by the 5..100 range
+    assert dlg.recent_limit == 100
