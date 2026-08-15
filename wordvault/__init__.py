@@ -24,6 +24,9 @@ RELEASE_DATE = "August 15, 2026"
 #: The motto that follows the version everywhere it appears.
 TAGLINE = "A professional writer's open-source friend"
 
+#: Where friends download WordVault (used by Help > Share WordVault).
+REPO_URL = "https://github.com/andyinva/WordVault"
+
 __all__ = [
     "DocumentStore",
     "RevisionWalker",

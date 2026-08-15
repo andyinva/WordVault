@@ -725,6 +725,19 @@ class MainWindow(QMainWindow):
         )
         guide_action.triggered.connect(self._on_user_guide)
 
+        share_action = QAction("&Share WordVault with a Friend…", self)
+        share_action.setToolTip(
+            "A ready-to-paste email: what WordVault is and how to "
+            "install it"
+        )
+        share_action.triggered.connect(self._on_share)
+
+        updates_action = QAction("&Getting Updates…", self)
+        updates_action.setToolTip(
+            "How to load new versions — your library is never touched"
+        )
+        updates_action.triggered.connect(self._on_updates)
+
         settings_action = QAction("&Settings…", self)
         settings_action.setToolTip(
             "Auto-save pause, font size, and library encryption"
@@ -740,6 +753,10 @@ class MainWindow(QMainWindow):
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(help_action)
         help_menu.addAction(guide_action)
+        help_menu.addSeparator()
+        help_menu.addAction(share_action)
+        help_menu.addAction(updates_action)
+        help_menu.addSeparator()
         help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
 
@@ -755,6 +772,19 @@ class MainWindow(QMainWindow):
 
         HelpDialog(self, document=_GUIDE_FILE,
                    title="WordVault User Guide").exec()
+
+    def _on_share(self) -> None:
+        """The installation email, with one-click copy — so telling a
+        friend about WordVault is a paste, not a writing assignment."""
+        from wordvault.editor.help_dialog import ShareDialog
+
+        ShareDialog(self).exec()
+
+    def _on_updates(self) -> None:
+        from wordvault.editor.help_dialog import _UPDATES_FILE, HelpDialog
+
+        HelpDialog(self, document=_UPDATES_FILE,
+                   title="Getting Updates").exec()
 
     def _on_settings(self) -> None:
         """Open Settings; apply and persist whatever was chosen."""

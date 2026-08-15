@@ -51,6 +51,47 @@ def test_user_guide_covers_philosophy_and_features():
         assert phrase in text, f"guide is missing '{phrase}'"
 
 
+def test_share_email_is_complete_and_copyable(qapp):
+    """Help > Share WordVault: the email must carry the download link,
+    both platforms' install commands, and the no-account promise; the
+    Copy button must land it on the clipboard verbatim."""
+    from PyQt6.QtWidgets import QApplication
+
+    from wordvault import REPO_URL
+    from wordvault.editor.help_dialog import (
+        ShareDialog,
+        installation_email_text,
+    )
+
+    text = installation_email_text()
+    assert REPO_URL in text
+    assert "pip install PyQt6" in text and "pip3 install" in text
+    assert "ON WINDOWS" in text and "ON UBUNTU" in text
+    assert "python -m wordvault" in text
+    assert "No account" in text
+
+    dlg = ShareDialog(None)
+    dlg.findChildren(type(dlg))  # noqa: B018 (touch the widget tree)
+    for button in dlg.findChildren(__import__("PyQt6.QtWidgets",
+                                              fromlist=["QPushButton"]
+                                              ).QPushButton):
+        if "Copy" in button.text():
+            button.click()
+            break
+    assert QApplication.clipboard().text() == text
+
+
+def test_updating_document_promises_library_safety():
+    from wordvault.editor.help_dialog import _UPDATES_FILE
+
+    text = _UPDATES_FILE.read_text(encoding="utf-8")
+    # Markdown wraps lines freely, so match with whitespace collapsed.
+    flat = " ".join(text.split())
+    assert "never touches your writing" in flat
+    assert "GitHub Desktop" in flat and "ZIP" in flat
+    assert ".wordvault" in flat
+
+
 def test_guide_dialog_opens(qapp):
     from wordvault.editor.help_dialog import _GUIDE_FILE
 
