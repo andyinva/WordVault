@@ -76,6 +76,37 @@ def _local_time(iso_utc: str) -> str:
     )
 
 
+def _sentence_start(paragraph_text: str, offset: int) -> int:
+    """Where the sentence containing `offset` begins, within one
+    paragraph: just after the last sentence-ender (. ! ?) that
+    precedes the offset — closing quotes and brackets allowed — or 0
+    when the offset sits in the paragraph's first sentence.  Read
+    Aloud backs up THIS far: a whole sentence, not a whole paragraph
+    (the reader's choice, Aug 2026)."""
+    import re
+
+    start = 0
+    for match in re.finditer(r"[.!?][\"'”’)\]]*\s+", paragraph_text[:offset]):
+        start = match.end()
+    return start
+
+
+def _speakable(markdown_text: str) -> str:
+    """Markdown -> the words a voice should SAY: heading marks, quote
+    and list markers, and emphasis asterisks are silent typography,
+    not speech ('kingdom', never 'asterisk asterisk kingdom')."""
+    import re
+
+    lines = []
+    for line in markdown_text.split("\n"):
+        line = re.sub(r"^#{1,6}\s+", "", line)      # heading marks
+        line = re.sub(r"^>\s?", "", line)           # quote marker
+        line = re.sub(r"^[-*]\s+", "", line)        # bullet marker
+        line = re.sub(r"^\d{1,3}\.\s+", "", line)   # list number
+        lines.append(line)
+    return "\n".join(lines).replace("*", "")
+
+
 class MainWindow(QMainWindow):
     """Top-level window; owns the store and the currently open document."""
 
@@ -501,6 +532,10 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(action)
             return action
 
+        add_edit("&Read Aloud from Cursor", "Ctrl+Shift+R",
+                 self._on_read_aloud)
+        edit_menu.addSeparator()
+
         add_edit("&Undo", QKeySequence.StandardKey.Undo, lambda: self._editor.undo())
         add_edit("&Redo", QKeySequence.StandardKey.Redo, lambda: self._editor.redo())
         edit_menu.addSeparator()
@@ -869,13 +904,115 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.StandardButton.Yes:
                 self._do_decrypt()
 
+    # ------------------------------------------------------ read aloud --
+
+    def _ensure_tts(self):
+        """The text-to-speech engine, created on first use.  Qt speaks
+        through the system's own voices (SAPI on Windows; on Ubuntu,
+        speech-dispatcher: sudo apt install speech-dispatcher).  None
+        when unavailable — explained once, not crashed over."""
+        if hasattr(self, "_tts"):
+            return self._tts
+        try:
+            from PyQt6.QtTextToSpeech import QTextToSpeech
+        except ImportError:
+            self._tts = None
+            QMessageBox.information(
+                self, "Read Aloud",
+                "This PyQt6 installation lacks the QtTextToSpeech "
+                "module.\n\nUsually fixed by:  pip install --upgrade "
+                "PyQt6\n(On Ubuntu, also:  sudo apt install "
+                "speech-dispatcher)")
+            return None
+        self._tts = QTextToSpeech(self)
+        self._tts.stateChanged.connect(self._on_tts_state)
+        return self._tts
+
+    def _on_read_aloud(self) -> None:
+        """The 🔊 button / Ctrl+Shift+R: read the SELECTION, or from
+        the cursor's paragraph to the end of the document, in the
+        system's digital voice.  A second click stops mid-word."""
+        from PyQt6.QtCore import QTimer
+
+        # The reading anchor is wherever the reader put the caret —
+        # capture it FIRST, and hold the view still through engine
+        # start-up (first use initializes the system voice, which must
+        # not be allowed to disturb the scene being read).
+        cursor = self._editor.textCursor()
+        scroll_bar = self._editor.verticalScrollBar()
+        scroll_pos = scroll_bar.value()
+
+        tts = self._ensure_tts()
+        if tts is None:
+            return
+        from PyQt6.QtTextToSpeech import QTextToSpeech
+
+        if tts.state() == QTextToSpeech.State.Speaking:
+            tts.stop()
+            self._read_btn.setText("🔊 Read")
+            return
+        if cursor.hasSelection():
+            # Qt marks paragraph breaks in selections with U+2029.
+            text = cursor.selectedText().replace("\u2029", "\n")
+        else:
+            # From the start of the SENTENCE under the cursor: whole
+            # sentences sound right, whole paragraphs repeat too much.
+            block = cursor.block()
+            offset = cursor.position() - block.position()
+            start = block.position() + _sentence_start(block.text(), offset)
+            text = self._editor.toPlainText()[start:]
+        text = _speakable(text).strip()
+        if not text:
+            self.statusBar().showMessage("Nothing to read here.", 4000)
+            return
+        tts.say(text)
+        self._read_btn.setText("⏹ Stop")
+        # Say out loud (in print) what is being said out loud (in air):
+        # the anchor line and the first words handed to the voice.
+        opening = " ".join(text.split())[:60]
+        self.statusBar().showMessage(
+            f"Reading from line {cursor.blockNumber() + 1}: "
+            f"“{opening}…”", 10000)
+
+        # Belt to the braces: whatever engine start-up stirred, put the
+        # view back where the reader was — now, and again once events
+        # settle.  Bound method, not a closure: PyQt cancels it if the
+        # window dies first (the history-stepping crash's lesson).
+        self._pending_scroll = scroll_pos
+        self._restore_history_scroll()
+        QTimer.singleShot(0, self._restore_history_scroll)
+
+    def _on_tts_state(self, state) -> None:
+        """The voice finished (or failed): the button offers to read
+        again."""
+        from PyQt6.QtTextToSpeech import QTextToSpeech
+
+        if state != QTextToSpeech.State.Speaking:
+            self._read_btn.setText("🔊 Read")
+
     def _build_status_bar(self) -> None:
         """Three permanent labels: document/revisions, words, last save.
-        This is the seed of the full info panel (DESIGN.md section 8)."""
+        Plus the Read Aloud button — the ear's way into the text."""
+        from PyQt6.QtWidgets import QPushButton
+
         self._doc_label = QLabel("No document open")
         self._words_label = QLabel("")
         self._saved_label = QLabel("")
+        self._read_btn = QPushButton("🔊 Read")
+        self._read_btn.setToolTip(
+            "Read aloud from the cursor (or the selection) in a "
+            "digital voice — click again to stop (Ctrl+Shift+R)"
+        )
+        self._read_btn.setFlat(True)
+        # NoFocus is essential: a focus-taking button steals the caret
+        # from the editor at the very moment the reading position
+        # matters, and the focus change jolted the view ("it jumps to
+        # the beginning", Aug 2026).  The editor keeps cursor and
+        # focus; the button is just a lever.
+        self._read_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._read_btn.clicked.connect(self._on_read_aloud)
         self.statusBar().addWidget(self._doc_label, stretch=1)
+        self.statusBar().addPermanentWidget(self._read_btn)
         self.statusBar().addPermanentWidget(self._words_label)
         self.statusBar().addPermanentWidget(self._saved_label)
 
@@ -1176,7 +1313,7 @@ class MainWindow(QMainWindow):
             latest.id,
             # QTextCursor.selectedText() uses U+2029 as its paragraph
             # separator; convert to real newlines for storage.
-            cursor.selectedText().replace(" ", "\n"),
+            cursor.selectedText().replace("\u2029", "\n"),
             cursor.selectionStart(),
             cursor.selectionEnd(),
         )

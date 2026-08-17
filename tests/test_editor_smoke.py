@@ -309,6 +309,44 @@ def test_open_external_files_go_straight_into_the_vault(qapp, tmp_path):
     window.close()
 
 
+def test_speakable_strips_typography():
+    """Read Aloud must SAY words, not markup: 'kingdom', never
+    'asterisk asterisk kingdom'."""
+    from wordvault.editor.main_window import _speakable
+
+    markdown = ("# Chapter One\n\n"
+                "The **kingdom** appears *often* here.\n\n"
+                "> A quoted verse.\n\n"
+                "- first point\n"
+                "2. second point\n")
+    spoken = _speakable(markdown)
+    assert "Chapter One" in spoken and "#" not in spoken
+    assert "The kingdom appears often here." in spoken
+    assert "A quoted verse." in spoken and ">" not in spoken
+    assert "first point" in spoken and "- " not in spoken
+    assert "second point" in spoken and "2." not in spoken
+    assert "*" not in spoken
+
+
+def test_sentence_start_finds_the_nearest_sentence():
+    """Read Aloud backs up to the SENTENCE, not the paragraph."""
+    from wordvault.editor.main_window import _sentence_start
+
+    text = 'First thought here. Second one follows! "Third?" And last.'
+    assert _sentence_start(text, 5) == 0            # in the first sentence
+    assert _sentence_start(text, 25) == 20          # in "Second one..."
+    assert text[_sentence_start(text, 25):].startswith("Second")
+    assert text[_sentence_start(text, 45):].startswith('"Third?"')
+    assert text[_sentence_start(text, 58):].startswith("And last.")
+    # Cursor right at the paragraph's start: sentence one, offset 0.
+    assert _sentence_start(text, 0) == 0
+
+
+def test_read_button_exists(window_with_history):
+    window, _doc = window_with_history
+    assert window._read_btn.text() == "🔊 Read"
+
+
 def test_autosave_refuses_in_history_mode(window_with_history):
     # The guard rail: viewing old text must never be saved as new typing.
     window, doc = window_with_history

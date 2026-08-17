@@ -173,6 +173,18 @@ passage even after line numbers drift.
   "line 143".
 - **Document Info panel** — dates, drafts, word count, your position.
 
+### Hearing your writing
+
+The **🔊 Read** button in the status bar (or Edit ▸ Read Aloud,
+Ctrl+Shift+R) reads the document to you in the system's digital
+voice — the selection if you have one, otherwise from the start of
+the *sentence* under your cursor to the end of the document. Click
+again to stop. Markdown markers are silent: you hear the words, not
+the typography. Hearing a sentence
+catches what the eye forgives — the doubled word, the rhythm that
+stumbles. (On Ubuntu this needs the standard speech system:
+`sudo apt install speech-dispatcher`.)
+
 ### Spelling, and your habits
 
 **View ▸ Check Spelling** underlines doubtful words; right-click for
