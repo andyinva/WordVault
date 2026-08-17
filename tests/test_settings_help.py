@@ -47,7 +47,9 @@ def test_user_guide_covers_philosophy_and_features():
     assert "Philosophy" in text
     for phrase in ("Nothing is ever lost", "Time Travel", "The Library",
                    "Making a Book", "Keyboard shortcuts", ".wvfmt",
-                   "notes pane", "Gather", "Scripture"):
+                   "notes pane", "Gather", "Scripture",
+                   "The editor is a window into the vault",
+                   "in the vault at all times", "SQL"):
         assert phrase in text, f"guide is missing '{phrase}'"
 
 

@@ -1,14 +1,7 @@
-1. Have the ability to use the AND or the OR in search requests.
+1. Have the ability to use the AND or the OR in search.
+2. Increase and decrease the editor or note window font size.
+3. How well does the Word Vault Handel an instantaneous power outage. 
+4. Would it be possible to create a single file installer. 
+5. plan for new features: When looking for new features look for things that make your writing more convenient and intuitive. 
 
-2. have the note window or edit window have a blue boarder depending on which is currently being used. This can be true for any window that is used such a search outline window. 
-
-3. How well does the Word Vault Handel an instantaneous power outage. Does it leave broken files that need to be recovered. Is the database in danger of corruption?
-
-4. Would it be possible to create a single file installer that will load all the needed parts. 
-
-5. How much trouble would it be to add the ability to increase and decrease the editor or note window font size? 
-
-6. Now that a format conversion between Mark Down and docx files has been established would it be possible to reload the document database and convert the formatting from docx files into a consistent Mark Down formatting? This would be a consistent reformatting of all the docx formatting, so when I open a document from the Word Vault database in Word Vault it will maintain a basic formatting across the entire database? This will require removing extra spaces here and there. There are often extra lines just after titles and in other places. I would think there should be a blank line between each title or paragraph but no more than one line. This would mean that all documents would end up looking the same as far as spacing. Also, I have a few new standards as far as printer or pdf output. Each would have a title and on the next line my name and the date printed with page numbering at bottom center. Also, as documents are loaded into the database there would be a check to make sure the creation date and last modified dates are not lost.  
-
-Just a few thoughts about print and pdf formatting. It seems there are a few types of formatting codes. Those that can be seen in the Mark Down file and related to text formatting, those that have no fixed placed in relation to the text, such as page numbering and are not applied until print time.   
 

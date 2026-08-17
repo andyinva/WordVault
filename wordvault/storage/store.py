@@ -167,6 +167,30 @@ class DocumentStore:
         ).fetchall()
         return [self._doc_from_row(r) for r in rows]
 
+    def update_document_dates(
+        self,
+        doc_id: int,
+        created_utc: Optional[str] = None,
+        original_mtime: Optional[str] = None,
+    ) -> None:
+        """Repair a document's DATE METADATA (the import-verification
+        pass): a document's dates should state when the writing was
+        written, and the Word file's internal record outranks the
+        filesystem dates a copy or sync may have reset.  Metadata
+        only — revisions and text are untouched."""
+        self.get_document(doc_id)  # existence check
+        if created_utc is not None:
+            self._conn.execute(
+                "UPDATE documents SET created_utc = ? WHERE id = ?",
+                (created_utc, doc_id),
+            )
+        if original_mtime is not None:
+            self._conn.execute(
+                "UPDATE documents SET original_mtime = ? WHERE id = ?",
+                (original_mtime, doc_id),
+            )
+        self._conn.commit()
+
     def rename_document(self, doc_id: int, new_title: str) -> None:
         """Change a document's title (titles are metadata, not history)."""
         self.get_document(doc_id)  # existence check

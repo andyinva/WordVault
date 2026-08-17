@@ -28,9 +28,9 @@ from pathlib import Path
 from typing import Callable, Optional, Union
 
 from wordvault.ingest.extract import (
+    document_dates_utc,
     extract_markdown,
     extract_text,
-    file_dates_utc,
     long_path,
 )
 from wordvault.ingest.similar import MinHasher, cluster
@@ -170,7 +170,9 @@ class Ingestor:
                 stats.empty += 1
                 continue
 
-            created_utc, mtime_utc = file_dates_utc(path)
+            # Word's internal dates when present, filesystem otherwise
+            # — copied/synced files keep their true authoring dates.
+            created_utc, mtime_utc = document_dates_utc(path)
             digest = _content_hash(text)
 
             if digest in known_hashes:
@@ -251,3 +253,50 @@ class Ingestor:
         for members in groups:
             self._store.create_similarity_group(members)
         return len(groups)
+
+
+def _dates_differ(stored, best, tolerance_seconds: int = 3600) -> bool:
+    """True when two ISO timestamps disagree by more than the
+    tolerance (an hour: enough to forgive timezone rounding, small
+    enough to catch a copy-day date years off the truth)."""
+    from datetime import datetime, timezone
+
+    if not best:
+        return False
+    if not stored:
+        return True
+    try:
+        a = datetime.fromisoformat(str(stored).replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(best).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if a.tzinfo is None:
+        a = a.replace(tzinfo=timezone.utc)
+    if b.tzinfo is None:
+        b = b.replace(tzinfo=timezone.utc)
+    return abs((a - b).total_seconds()) > tolerance_seconds
+
+
+def repair_document_dates(store: DocumentStore, doc) -> bool:
+    """Verify one document's dates against its original file's BEST
+    evidence — the Word-internal created/modified when present, the
+    filesystem otherwise — and repair the stored metadata when they
+    disagree.  (Filesystem dates lie after every copy or sync; the
+    dates inside the docx do not.)  Returns True when something was
+    fixed.  Used by Library > Refresh Formatting from Originals."""
+    from pathlib import Path
+
+    from wordvault.ingest.extract import document_dates_utc
+
+    if not doc.original_path or not Path(long_path(doc.original_path)).exists():
+        return False
+    created, modified = document_dates_utc(doc.original_path)
+
+    new_created = created if _dates_differ(doc.created_utc, created) else None
+    new_mtime = (modified
+                 if _dates_differ(doc.original_mtime, modified) else None)
+    if new_created is None and new_mtime is None:
+        return False
+    store.update_document_dates(doc.id, created_utc=new_created,
+                                original_mtime=new_mtime)
+    return True

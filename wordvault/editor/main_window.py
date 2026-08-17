@@ -286,7 +286,10 @@ class MainWindow(QMainWindow):
         * typing the FIRST character of a note (an empty line) stamps
           it with where the editor's cursor stands — the note is
           associated with that place in the document;
-        * double-clicking a stamped line jumps the editor back there.
+        * a single CLICK ON THE STAMP ITSELF ("▸ line 143 (…):") jumps
+          the editor back there — the stamp is the link; clicking in
+          the note's own words just edits, as any text does;
+        * double-clicking anywhere in a stamped line also jumps.
         """
         from PyQt6.QtCore import QEvent
 
@@ -303,7 +306,24 @@ class MainWindow(QMainWindow):
                 event.position().toPoint())
             if self._jump_to_note_anchor(cursor.block().text()):
                 return True                    # handled: don't select text
+        elif (obj is self._notes.viewport()
+                and event.type() == QEvent.Type.MouseButtonRelease):
+            cursor = self._notes.cursorForPosition(
+                event.position().toPoint())
+            if self._click_is_on_stamp(cursor.block().text(),
+                                       cursor.positionInBlock()):
+                self._jump_to_note_anchor(cursor.block().text())
         return super().eventFilter(obj, event)
+
+    @staticmethod
+    def _click_is_on_stamp(note_line: str, position_in_block: int) -> bool:
+        """True when a click landed WITHIN the '▸ line N (…):' stamp at
+        the head of a note line — the stamp acts as a link; the note's
+        own words stay ordinary editable text."""
+        import re as _re
+
+        match = _re.match(r"▸ line \d+(?: \([^)]*\))?:", note_line)
+        return bool(match) and position_in_block <= match.end()
 
     def _note_anchor_prefix(self) -> str:
         """The stamp for a new note: the editor's cursor line plus a
@@ -417,6 +437,20 @@ class MainWindow(QMainWindow):
         new_action.setShortcut(QKeySequence.StandardKey.New)   # Ctrl+N
         new_action.triggered.connect(self._on_new_document)
         file_menu.addAction(new_action)
+
+        # --- File ▸ Open: ONE outside file, converted and put straight
+        # into the vault, then opened for editing.  Consistent with the
+        # design: the editor is a window onto the vault, so material
+        # is protected from its first second here.  Each kind has its
+        # own conversion (see _import_external_file).
+        open_menu = file_menu.addMenu("&Open File (docx, md, txt)")
+        for label, kind in (("&Word Document (.docx)…", "docx"),
+                            ("&Markdown File (.md)…", "md"),
+                            ("Plain &Text File (.txt)…", "txt")):
+            action = QAction(label, self)
+            action.triggered.connect(
+                lambda _c, k=kind: self._on_open_external(k))
+            open_menu.addAction(action)
 
         save_action = QAction("&Save Revision Now", self)
         save_action.setShortcut(QKeySequence.StandardKey.Save)  # Ctrl+S
@@ -626,6 +660,15 @@ class MainWindow(QMainWindow):
         import_folder_action.setShortcut("Ctrl+Shift+I")
         import_folder_action.triggered.connect(self._on_import_folder)
         library_menu.addAction(import_folder_action)
+
+        refresh_fmt_action = QAction("Re&fresh Formatting from Originals…",
+                                     self)
+        refresh_fmt_action.setToolTip(
+            "Re-read every imported document's original .docx with the "
+            "current converter; improved text becomes one new revision"
+        )
+        refresh_fmt_action.triggered.connect(self._on_refresh_formatting)
+        library_menu.addAction(refresh_fmt_action)
 
         library_menu.addSeparator()
 
@@ -879,6 +922,181 @@ class MainWindow(QMainWindow):
         self._autosave()  # decisions may re-order the library; save first
         ReviewDialog(self._store, self).exec()
         self._reload_document_list()  # chain markers may have changed
+
+    # ---------------- File ▸ Open: one outside file into the vault --
+
+    def _on_open_external(self, kind: str) -> None:
+        """File ▸ Open File: pick one outside file.  It is converted,
+        put into the vault as a new document, and opened for editing —
+        protected by revisions from its first second here.  (The vault
+        keeps everything forever, so open deliberately: there is no
+        delete.)"""
+        from PyQt6.QtWidgets import QFileDialog
+
+        filters = {
+            "docx": "Word documents (*.docx)",
+            "md": "Markdown files (*.md *.markdown)",
+            "txt": "Text files (*.txt)",
+        }
+        path, _f = QFileDialog.getOpenFileName(
+            self, "Open File into WordVault", "", filters[kind])
+        if not path:
+            return
+        doc = self._import_external_file(Path(path), kind)
+        if doc is not None:
+            self._autosave()             # current document's last words
+            self._reload_document_list()
+            self._open_document(doc.id)
+            self.statusBar().showMessage(
+                f"'{doc.title}' converted and saved into the vault — "
+                f"editing it now.", 8000)
+
+    def _import_external_file(self, path: Path, kind: str):
+        """Convert one outside file and CREATE its vault document.
+        Each kind does its own conversion into WordVault's format:
+
+          docx  -> the full importer (headings, bold/italic, lists,
+                   quotes, hyperlinks, tables — same as folder import)
+          md    -> already our format; line endings normalized
+          txt   -> plain text IS valid WordVault text; normalized
+
+        Title: the file's first '# ' heading, else its name (numbered
+        if the library already uses it).  Dates: the file's best
+        evidence — Word-internal for docx, filesystem otherwise.
+        Returns the new Document, or None on failure."""
+        import re as _re
+
+        try:
+            if kind == "docx":
+                from wordvault.ingest.extract import extract_markdown
+
+                text = extract_markdown(path)
+            else:
+                from wordvault.ingest.extract import (
+                    long_path,
+                    normalize_text,
+                )
+
+                raw = None
+                for encoding in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        raw = Path(long_path(path)).read_text(
+                            encoding=encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                if raw is None:
+                    raise OSError("undecodable text encoding")
+                text = normalize_text(raw)
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot open file",
+                                f"{path.name}: {exc}")
+            return None
+
+        title = path.stem
+        for line in text.splitlines():
+            match = _re.match(r"^#\s+(.+)$", line)
+            if match:
+                title = match.group(1).strip()
+                break
+        existing = {d.title for d in self._store.list_documents()}
+        final_title, n = title, 2
+        while final_title in existing:
+            final_title = f"{title} ({n})"
+            n += 1
+
+        created = mtime = None
+        try:
+            if path.suffix.lower() == ".docx":
+                from wordvault.ingest.extract import document_dates_utc
+
+                created, mtime = document_dates_utc(path)
+            else:
+                from wordvault.ingest.extract import file_dates_utc
+
+                created, mtime = file_dates_utc(path)
+        except OSError:
+            pass                         # unreadable dates: use "now"
+
+        doc = self._store.create_document(
+            final_title, original_path=str(path),
+            original_mtime=mtime, created_utc=created)
+        self._store.save_revision(doc.id, text, origin="file open")
+        return self._store.get_document(doc.id)
+
+    def _on_refresh_formatting(self) -> None:
+        """Library ▸ Refresh Formatting from Originals: re-read every
+        imported document's original .docx with the CURRENT converter
+        (which improves over time — toolbar lists, hyperlinks, tables,
+        underlines, indent-quotes...).  A document whose text would
+        change gets ONE new revision; the old text stays one step back
+        in history.  Safe to run after every WordVault update."""
+        from pathlib import Path
+
+        from PyQt6.QtWidgets import QApplication, QProgressDialog
+
+        from wordvault.ingest.extract import extract_markdown
+
+        docs = [d for d in self._store.list_documents()
+                if d.original_path and Path(d.original_path).exists()]
+        if not docs:
+            QMessageBox.information(
+                self, "Refresh Formatting",
+                "No documents with reachable original .docx files.")
+            return
+        answer = QMessageBox.question(
+            self, "Refresh Formatting",
+            f"Re-read {len(docs)} original .docx files with the current "
+            f"converter?\n\nDocuments whose text improves get one new "
+            f"revision each — nothing is overwritten, and unchanged "
+            f"documents are left alone.\n\nDates are verified too: where "
+            f"the Word file's own created/modified record disagrees with "
+            f"what was stored (copied files lie about their age), the "
+            f"stored dates are corrected.")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._autosave()
+        progress = QProgressDialog(
+            "Refreshing formatting…", "Stop", 0, len(docs), self)
+        progress.setWindowTitle("Refresh Formatting")
+        progress.setMinimumDuration(0)
+        from wordvault.ingest.pipeline import repair_document_dates
+
+        changed = errors = dates_fixed = 0
+        for index, doc in enumerate(docs):
+            if progress.wasCanceled():
+                break
+            progress.setValue(index)
+            progress.setLabelText(doc.title)
+            QApplication.processEvents()
+            try:
+                markdown = extract_markdown(doc.original_path)
+                if repair_document_dates(self._store, doc):
+                    dates_fixed += 1
+            except Exception:          # one bad file must not stop 1,800
+                errors += 1
+                continue
+            latest = self._store.latest_revision(doc.id)
+            current = self._store.get_text(latest.id) if latest else ""
+            if markdown != current:
+                self._store.save_revision(doc.id, markdown, origin="ingest")
+                changed += 1
+        progress.setValue(len(docs))
+
+        # The open document may be among the improved: show its new text.
+        if self._current_doc is not None:
+            self._open_document(self._current_doc.id)
+        self._reload_document_list()
+        message = (f"{changed} document(s) improved (one new revision "
+                   f"each), {len(docs) - changed - errors} already "
+                   f"current.")
+        if dates_fixed:
+            message += (f"\n{dates_fixed} document(s) had their dates "
+                        f"corrected from the Word files' own records.")
+        if errors:
+            message += f"\n{errors} file(s) could not be read."
+        QMessageBox.information(self, "Refresh Formatting", message)
 
     def _on_formatter(self) -> None:
         """Open (or raise) the Book Formatter — a NON-modal window, so

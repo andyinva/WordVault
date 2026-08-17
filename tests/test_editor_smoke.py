@@ -225,6 +225,14 @@ def test_note_anchoring_and_jump_back(qapp, tmp_path):
     assert window._jump_to_note_anchor("▸ line 3 (third): my note")
     assert window._editor.textCursor().blockNumber() == 2
     assert not window._jump_to_note_anchor("an ordinary note line")
+
+    # Single click: ON the stamp = link; in the note's words = just
+    # editing.  The stamp here is 22 characters ("▸ line 3 (third):").
+    stamp_line = "▸ line 3 (third): my note"
+    assert window._click_is_on_stamp(stamp_line, 0)
+    assert window._click_is_on_stamp(stamp_line, 17)     # the colon
+    assert not window._click_is_on_stamp(stamp_line, 20)  # "my note"
+    assert not window._click_is_on_stamp("plain note", 0)
     window.close()
 
 
@@ -245,6 +253,60 @@ def test_title_header_shows_draft_number_and_date(window_with_history):
     assert "draft 1 of 3" in window._title_label.text()
     window._timeline.go_newest()
     assert "draft 3 of 3" in window._title_label.text()
+
+
+def test_open_external_files_go_straight_into_the_vault(qapp, tmp_path):
+    """File > Open (docx/md/txt): convert on open, vault immediately,
+    then edit — the document is protected from its first second.  The
+    docx path uses the full importer; titles come from the first
+    heading (numbered on collision); docx dates come from the file's
+    internal record."""
+    from datetime import datetime, timezone
+
+    import docx as docx_lib
+
+    window = MainWindow(tmp_path / "open.db")
+
+    # --- markdown: heading becomes the title ---
+    md = tmp_path / "05 My Essay.md"
+    md.write_text("# My Essay\n\nBody words.\n", encoding="utf-8")
+    doc = window._import_external_file(md, "md")
+    assert doc.title == "My Essay"
+    assert window._store.current_text(doc.id) == "# My Essay\n\nBody words.\n"
+    assert doc.original_path == str(md)
+
+    # --- collision: same heading again -> numbered title ---
+    doc2 = window._import_external_file(md, "md")
+    assert doc2.title == "My Essay (2)"
+
+    # --- txt: plain text, normalized (bytes: write_text on Windows
+    # would turn the literal \r\n into \r\r\n and corrupt the test) ---
+    txt = tmp_path / "note.txt"
+    txt.write_bytes(b"just words\r\nsecond line\r\n")
+    doc3 = window._import_external_file(txt, "txt")
+    assert doc3.title == "note"
+    assert window._store.current_text(doc3.id) == "just words\nsecond line\n"
+
+    # --- docx: full conversion + Word-internal dates ---
+    d = docx_lib.Document()
+    d.add_paragraph("Opened Chapter", style="Heading 1")
+    p = d.add_paragraph()
+    p.add_run("with ").bold = False
+    p.add_run("weight").bold = True
+    d.core_properties.created = datetime(2020, 2, 2, tzinfo=timezone.utc)
+    dx = tmp_path / "opened.docx"
+    d.save(str(dx))
+    doc4 = window._import_external_file(dx, "docx")
+    assert doc4.title == "Opened Chapter"
+    text = window._store.current_text(doc4.id)
+    assert "# Opened Chapter" in text and "**weight**" in text
+    assert doc4.created_utc.startswith("2020-02-02")
+
+    # Opening for editing works like any vault document.
+    window._open_document(doc4.id)
+    assert window._current_doc.id == doc4.id
+    assert not window._editor.isReadOnly()
+    window.close()
 
 
 def test_autosave_refuses_in_history_mode(window_with_history):

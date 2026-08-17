@@ -79,9 +79,10 @@ def test_style_spacing_becomes_blank_lines(tmp_path):
     assert extract_markdown(path) == "First paragraph.\n\nSecond paragraph.\n"
 
 
-def test_no_spacing_style_stays_tight(tmp_path):
-    # An explicit 0pt (Word's "No Spacing" look) keeps lines together —
-    # like a credits/ISBN block on a title page.
+def test_paragraphs_always_get_a_blank_line(tmp_path):
+    # The separation rule (Aug 2026, by request): EVERY pair of
+    # neighboring paragraphs is separated by a blank line — even when
+    # Word's spacing was an explicit 0pt.  Predictable beats faithful.
     from docx.shared import Pt
 
     from wordvault.ingest.extract import extract_markdown
@@ -94,7 +95,7 @@ def test_no_spacing_style_stays_tight(tmp_path):
     path = tmp_path / "tight.docx"
     d.save(str(path))
 
-    assert extract_markdown(path) == "ISBN: 123\nPublished in the USA\n"
+    assert extract_markdown(path) == "ISBN: 123\n\nPublished in the USA\n"
 
 
 def test_headings_always_get_breathing_room(tmp_path):
@@ -164,6 +165,186 @@ def test_extract_markdown_merges_split_runs(tmp_path):
     d.save(str(path))
 
     assert extract_markdown(path).strip() == "**all of this bold**"
+
+
+def test_toolbar_list_imports_as_bullets(tmp_path):
+    """Lists made with the RIBBON BUTTONS (numbering attached directly
+    to ordinary paragraphs, style still 'Normal') must import as list
+    items — they used to flatten into plain prose."""
+    from docx.oxml.ns import qn
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    d.add_paragraph("Shopping:")
+    for item in ("bread", "wine"):
+        p = d.add_paragraph(item)
+        numpr = p._p.get_or_add_pPr().get_or_add_numPr()
+        numpr.get_or_add_numId().val = 7      # a numbering reference...
+        numpr.get_or_add_ilvl().val = 0
+        assert p._p.pPr.numPr.numId.val == 7
+        _ = qn  # (namespace helper imported for clarity of intent)
+    path = tmp_path / "toolbar.docx"
+    d.save(str(path))
+
+    import re
+
+    text = extract_markdown(path)
+    # Bullet or number depends on what numbering.xml says numId 7 is
+    # (the classifier reads the real definitions — python-docx's own
+    # template defines it as decimal).  Either way: LIST items, tight.
+    assert re.search(r"Shopping:\n\n(- |1\. )bread\n\1wine\n", text), text
+
+
+def test_numbering_formats_classifier(tmp_path):
+    """word/numbering.xml decides bullet vs number per numId."""
+    import zipfile
+
+    from wordvault.ingest.extract import _numbering_formats
+
+    xml = (
+        '<w:numbering xmlns:w="http://schemas.openxmlformats.org/'
+        'wordprocessingml/2006/main">'
+        '<w:abstractNum w:abstractNumId="0">'
+        '<w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum>'
+        '<w:abstractNum w:abstractNumId="1">'
+        '<w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum>'
+        '<w:num w:numId="5"><w:abstractNumId w:val="0"/></w:num>'
+        '<w:num w:numId="6"><w:abstractNumId w:val="1"/></w:num>'
+        '</w:numbering>'
+    )
+    path = tmp_path / "n.docx"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("word/numbering.xml", xml)
+    formats = _numbering_formats(path)
+    assert formats[(5, 0)] == "bullet"
+    assert formats[(6, 0)] == "number"
+
+
+def test_hyperlink_text_survives_with_address(tmp_path):
+    """Linked words used to VANISH (python-docx's runs omit hyperlink
+    contents).  Now: 'the text (address)'."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    p = d.add_paragraph("See ")
+    rid = d.part.relate_to("https://example.com/study",
+                           RT.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), rid)
+    run = OxmlElement("w:r")
+    text_el = OxmlElement("w:t")
+    text_el.text = "the article"
+    run.append(text_el)
+    link.append(run)
+    p._p.append(link)
+    path = tmp_path / "linked.docx"
+    d.save(str(path))
+
+    assert ("See the article (https://example.com/study)"
+            in extract_markdown(path))
+
+
+def test_table_text_flattens_to_rows(tmp_path):
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    d.add_paragraph("Before the table.")
+    table = d.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Feast"
+    table.cell(0, 1).text = "Month"
+    table.cell(1, 0).text = "Passover"
+    table.cell(1, 1).text = "First"
+    d.add_paragraph("After the table.")
+    path = tmp_path / "tabled.docx"
+    d.save(str(path))
+
+    text = extract_markdown(path)
+    assert "Before the table.\n\nFeast — Month\nPassover — First\n\n" \
+        "After the table." in text
+
+
+def test_underline_becomes_italic_and_indent_becomes_quote(tmp_path):
+    from docx.shared import Inches
+
+    from wordvault.ingest.extract import extract_markdown
+
+    d = docx.Document()
+    p = d.add_paragraph()
+    p.add_run("a ")
+    p.add_run("stressed").underline = True
+    p.add_run(" word")
+    q = d.add_paragraph("Blessed are the meek, for they shall "
+                        "inherit the earth.")
+    q.paragraph_format.left_indent = Inches(0.5)
+    path = tmp_path / "ui.docx"
+    d.save(str(path))
+
+    text = extract_markdown(path)
+    assert "a *stressed* word" in text
+    assert "> Blessed are the meek" in text
+
+
+def test_word_internal_dates_beat_filesystem(tmp_path):
+    """The dates INSIDE the docx (Word's own record of authoring) win
+    over filesystem dates, which every copy or sync resets."""
+    from datetime import datetime, timezone
+
+    from wordvault.ingest.extract import (
+        docx_internal_dates,
+        document_dates_utc,
+    )
+
+    d = docx.Document()
+    d.add_paragraph("Old words.")
+    d.core_properties.created = datetime(2019, 3, 4, 16, 30,
+                                         tzinfo=timezone.utc)
+    d.core_properties.modified = datetime(2021, 7, 1, 9, 0,
+                                          tzinfo=timezone.utc)
+    path = tmp_path / "aged.docx"
+    d.save(str(path))       # the FILE is created right now (copy-day)
+
+    created, modified = docx_internal_dates(path)
+    assert created.startswith("2019-03-04")
+    assert modified.startswith("2021-07-01")
+    # The combined best-evidence reader prefers the internal record.
+    best_created, best_modified = document_dates_utc(path)
+    assert best_created.startswith("2019-03-04")
+    assert best_modified.startswith("2021-07-01")
+
+
+def test_repair_document_dates_fixes_copy_day_metadata(tmp_path):
+    """The Refresh verification: a document imported with copy-day
+    dates gets them corrected to the Word file's internal record —
+    once; a second pass finds nothing to fix."""
+    from datetime import datetime, timezone
+
+    from wordvault.ingest.pipeline import repair_document_dates
+
+    d = docx.Document()
+    d.add_paragraph("Words with a past.")
+    d.core_properties.created = datetime(2018, 1, 2, tzinfo=timezone.utc)
+    d.core_properties.modified = datetime(2020, 5, 6, tzinfo=timezone.utc)
+    path = tmp_path / "past.docx"
+    d.save(str(path))
+
+    store = DocumentStore(tmp_path / "lib.db")
+    doc = store.create_document(
+        "Past", original_path=str(path),
+        original_mtime="2026-08-16T00:00:00+00:00",   # copy-day lies
+        created_utc="2026-08-16T00:00:00+00:00",
+    )
+    assert repair_document_dates(store, doc) is True
+    fixed = store.get_document(doc.id)
+    assert fixed.created_utc.startswith("2018-01-02")
+    assert fixed.original_mtime.startswith("2020-05-06")
+    # Second pass: everything already agrees.
+    assert repair_document_dates(store, fixed) is False
+    store.close()
 
 
 def test_phase_a_ingests_and_collapses_duplicates(library):

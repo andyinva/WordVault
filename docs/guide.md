@@ -40,24 +40,51 @@ still exists in every draft that contained it, one slider-drag away.
 The safety net is not a feature you invoke — it is the ground you
 stand on.
 
-### The library, not files
+### The vault: one place, not a pile of files
 
-The second conviction: your writing lives in **one library**, a
-single SQLite database, not in a folder of files. The library is the
-sole source of truth. Because everything is in one place, WordVault
-can do things a pile of files cannot: search every essay you have
-ever written in an instant, notice that two documents are versions of
-the same essay, index every Scripture reference across the whole
-body of work, and assemble any set of essays into a book.
+The second conviction: your writing lives in **the vault** — one
+place, not a folder of files. Technically the vault is a single SQL
+database (SQLite, the most widely deployed database engine in the
+world, storing everything in one ordinary file you can copy and back
+up). But "vault" says what it *means*: everything you have written,
+every draft of it, held together in one guarded place. The vault is
+the sole source of truth. Because everything is in it, WordVault can
+do what a pile of files cannot: search every essay you have ever
+written in an instant, notice that two documents are versions of the
+same essay, index every Scripture reference across the whole body of
+work, and assemble any set of essays into a book.
 
 Your old .docx files are not abandoned — they are *imported*, their
 text and basic formatting carried in, their version relationships
 detected and chained. The originals stay untouched wherever they
 were.
 
+### The editor is a window into the vault
+
+The third conviction follows from the second, and it is the one that
+makes everything else work: **the editor is not a workspace beside
+the vault — it is a window into it.** A word processor holds a copy
+of your document in memory while the "real" one sits in a file;
+saving means overwriting one with the other, and everything between
+saves exists nowhere but RAM. WordVault has no such gap. The document
+you are editing is *in the vault at all times*: it enters the vault
+at birth (typed new, opened from a file, or imported), and from that
+first second every pause of your fingers flows straight into it as a
+revision.
+
+This is why all the advantages of the design are simply *there* while
+you write, with nothing to invoke: the timeline can step through
+history because history is beneath the text; search finds the
+sentence you wrote a minute ago because the vault already holds it;
+notes, tags, and scripture indexing attach to something permanent;
+the Book Formatter reads chapters that are always current; and a
+power cut costs you at most a few seconds of typing. There is no
+"unsaved work" because there is no state of existence outside the
+vault for work to be lost from.
+
 ### Plain text now, formatting at the end
 
-The third conviction: **writing and typesetting are different jobs,
+The fourth conviction: **writing and typesetting are different jobs,
 done at different times**. In WordVault you write plain text with a
 few Markdown conventions (`# ` for a heading, `**bold**`, `*italic*`)
 — light enough to type without thinking, and the editor styles them
@@ -71,7 +98,7 @@ book chapter tomorrow, without touching a word of it.
 
 ### Essays first, books from essays
 
-The fourth conviction: **the essay is the unit of thought, and a book
+The fifth conviction: **the essay is the unit of thought, and a book
 is an assembly of essays**. Each chapter you write is a document with
 its own history, its own notes, its own place in search results. A
 book is a *recipe* — an ordered list of pointers into the library,
@@ -128,9 +155,11 @@ the text or its revisions — scaffolding, not masonry.
 
 **Notes know their place.** Start a note (type on an empty line) and
 it is stamped with where your cursor stood in the text, like
-`▸ line 143 (The trust is not always…): `. Double-click a stamped
-line later and the editor jumps back to that spot. The quoted words
-help you find the passage even after line numbers drift.
+`▸ line 143 (The trust is not always…): `. The stamp is a link:
+**click it** and the editor jumps back to that spot (double-clicking
+anywhere in the line works too). Clicking in the note's own words
+just edits them, as any text. The quoted words help you find the
+passage even after line numbers drift.
 
 ### Seeing the document
 
@@ -204,11 +233,34 @@ the chain is noted in the Library list.
 
 ### Getting writing in
 
+- **File ▸ Open File (docx, md, txt)** brings in a *single* outside
+  file: it is converted to WordVault's conventions (the docx path
+  uses the full importer below), saved into the vault as a new
+  document — title from its first heading, dates from the file's own
+  best evidence — and opened for editing at once. Protected by
+  revisions from its first second; open deliberately, since the
+  vault keeps everything.
 - **Library ▸ Import .docx Folder…** (Ctrl+Shift+I) walks a folder of
-  Word documents into the library — text, headings, bold and italic
-  preserved as Markdown; near-duplicate detection groups probable
-  versions for review. Already-imported files are skipped, so re-runs
-  are safe. Archive copies of the originals can be kept alongside.
+  Word documents into the library, converting real Word formatting to
+  the Markdown conventions: headings and titles, bold and italic
+  (underline becomes italic — emphasis preserved), bullet and
+  numbered lists whether made with styles *or* the ribbon buttons,
+  quotations (the Quote styles and indented paragraphs alike),
+  hyperlinks as "text (address)", and table text flattened to one
+  line per row so no words are lost. Paragraphs are always separated
+  by a blank line. Near-duplicate detection groups probable versions
+  for review; already-imported files are skipped, so re-runs are
+  safe; archive copies of the originals can be kept alongside.
+- **Library ▸ Refresh Formatting from Originals…** re-reads every
+  imported document's original .docx with the *current* converter.
+  Documents whose text improves get one new revision each — the old
+  text stays one step back in history. It also **verifies dates**:
+  Word records created/modified *inside* every docx, and those
+  records outrank filesystem dates (which every copy or sync can
+  reset to copy-day). Stored dates that disagree with the file's own
+  record are corrected, so the library's chronology reflects when
+  the writing was actually written. Run it after any WordVault
+  update that improves the importer.
 - **tools/import_markdown.py** loads a folder of .md files, one
   document each (its partner **tools/split_book_docx.py** carves a
   compiled book .docx back into chapter Markdown, dropping title
@@ -255,7 +307,7 @@ do not.
 - **Export as .wvdoc** carries one document, with full history,
   encrypted, to another machine.
 - **Settings** can encrypt the live library itself (SQLCipher): the
-  database on disk becomes unreadable without the passphrase asked at
+  vault on disk becomes unreadable without the passphrase asked at
   startup.
 
 **There is no passphrase recovery.** A forgotten passphrase means the

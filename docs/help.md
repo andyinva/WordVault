@@ -136,9 +136,10 @@ sittings.
   its revisions.
 - **Notes know their place**: start a note (type on an empty line) and
   it is stamped with where your cursor stood in the text — like
-  "▸ line 143 (The trust is not always…): ". Double-click a stamped
-  line later and the editor jumps back to that spot. The quoted words
-  help you find the place even after line numbers drift.
+  "▸ line 143 (The trust is not always…): ". The stamp is a link —
+  click it and the editor jumps back to that spot (double-clicking
+  anywhere in the line works too). The quoted words help you find
+  the place even after line numbers drift.
 - **The title header** shows which state of the document is on screen:
   "draft 12 of 87 — Aug 9, 2026, 3:14 PM". While time traveling it
   names the old draft you are viewing.
