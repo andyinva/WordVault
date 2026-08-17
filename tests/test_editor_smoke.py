@@ -226,6 +226,36 @@ def test_note_anchoring_and_jump_back(qapp, tmp_path):
     assert window._editor.textCursor().blockNumber() == 2
     assert not window._jump_to_note_anchor("an ordinary note line")
 
+    # Sentence anchoring (Aug 2026): a cursor in a LATER sentence of a
+    # paragraph stamps that sentence's words, not the paragraph's.
+    window._editor.set_text_quietly(
+        "One long paragraph. The second thought starts here and "
+        "continues on. A third follows.\n")
+    doc_block = window._editor.document().firstBlock()
+    mid = QTextCursor(doc_block)
+    mid.setPosition(doc_block.position() + 40)     # inside sentence two
+    window._editor.setTextCursor(mid)
+    prefix = window._note_anchor_prefix()
+    # The snippet caps at 24 characters, mid-word if need be:
+    # "The second thought start" + ellipsis.
+    assert prefix.startswith("▸ line 1 (The second thought start")
+    assert "…" in prefix
+    assert "One long paragraph" not in prefix     # not the paragraph!
+
+    # Drift-proof jump: the stamp's words are FOUND even when the
+    # stamped line number no longer holds them.
+    window._editor.set_text_quietly(
+        "new opening line\nmore new text\n"
+        "One long paragraph. The second thought starts here.\n")
+    window._editor.setTextCursor(
+        QTextCursor(window._editor.document().firstBlock()))
+    assert window._jump_to_note_anchor(
+        "▸ line 1 (The second thought starts…): my note")
+    cursor_now = window._editor.textCursor()
+    assert cursor_now.blockNumber() == 2           # found on its NEW line
+    rest = window._editor.toPlainText()[cursor_now.position():]
+    assert rest.startswith("The second thought starts")
+
     # Single click: ON the stamp = link; in the note's words = just
     # editing.  The stamp here is 22 characters ("▸ line 3 (third):").
     stamp_line = "▸ line 3 (third): my note"

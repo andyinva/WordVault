@@ -357,12 +357,16 @@ class MainWindow(QMainWindow):
         return bool(match) and position_in_block <= match.end()
 
     def _note_anchor_prefix(self) -> str:
-        """The stamp for a new note: the editor's cursor line plus a
-        snippet of that line's words (line numbers drift as a document
-        grows — the quoted words let you find the place again)."""
+        """The stamp for a new note: the cursor's line plus the first
+        words of the SENTENCE under the cursor (not the paragraph's
+        opening — a long paragraph holds many thoughts, and the note
+        belongs to one of them).  The quoted words also let the jump
+        FIND the place again after line numbers drift."""
         cursor = self._editor.textCursor()
         line = cursor.blockNumber() + 1
-        words = cursor.block().text().strip()
+        block_text = cursor.block().text()
+        offset = cursor.position() - cursor.block().position()
+        words = block_text[_sentence_start(block_text, offset):].strip()
         snippet = (words[:24].rstrip() + "…") if len(words) > 24 else words
         where = f"▸ line {line}"
         if snippet:
@@ -370,20 +374,36 @@ class MainWindow(QMainWindow):
         return where + ": "
 
     def _jump_to_note_anchor(self, note_line: str) -> bool:
-        """If note_line carries a '▸ line N' stamp, move the editor
-        there (clamped to the document's end) and center it.  Returns
-        True when a jump happened."""
+        """If note_line carries a '▸ line N (words…)' stamp, move the
+        editor to the SENTENCE those words begin: found within the
+        stamped line when it still lives there, searched for in the
+        whole document when editing has moved it (drift-proof), and
+        the stamped line's start as the last resort.  Returns True
+        when a jump happened."""
         import re as _re
 
         from PyQt6.QtGui import QTextCursor
 
-        match = _re.match(r"▸ line (\d+)", note_line)
+        match = _re.match(r"▸ line (\d+)(?: \((.*?)\))?:", note_line)
         if not match:
             return False
         number = min(int(match.group(1)) - 1,
                      self._editor.document().blockCount() - 1)
         block = self._editor.document().findBlockByNumber(max(0, number))
-        cursor = QTextCursor(block)
+        position = block.position()
+
+        snippet = (match.group(2) or "").rstrip("…").strip()
+        if snippet:
+            in_block = block.text().find(snippet)
+            if in_block >= 0:
+                position = block.position() + in_block
+            else:
+                anywhere = self._editor.toPlainText().find(snippet)
+                if anywhere >= 0:
+                    position = anywhere      # the passage moved; found it
+
+        cursor = QTextCursor(self._editor.document())
+        cursor.setPosition(position)
         self._editor.setTextCursor(cursor)
         self._editor.centerCursor()
         self._editor.setFocus()

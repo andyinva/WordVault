@@ -155,11 +155,14 @@ the text or its revisions — scaffolding, not masonry.
 
 **Notes know their place.** Start a note (type on an empty line) and
 it is stamped with where your cursor stood in the text, like
-`▸ line 143 (The trust is not always…): `. The stamp is a link:
-**click it** and the editor jumps back to that spot (double-clicking
+`▸ line 143 (The trust is not always…): ` — the quoted words are the
+start of the *sentence* under your cursor, so a long paragraph's many
+thoughts each get their own address. The stamp is a link: **click
+it** and the editor jumps back to that sentence (double-clicking
 anywhere in the line works too). Clicking in the note's own words
-just edits them, as any text. The quoted words help you find the
-passage even after line numbers drift.
+just edits them, as any text. And the jump *searches for the quoted
+words*, so it still finds the passage after editing has moved it off
+its old line number.
 
 ### Seeing the document
 
