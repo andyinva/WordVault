@@ -100,6 +100,16 @@ class DocumentStore:
         # create_all is idempotent and reports whether FTS5 search exists.
         self.fts_available: bool = schema.create_all(self._conn)
 
+        # Migration for libraries born before the wastebasket (Aug 2026):
+        # CREATE TABLE IF NOT EXISTS skips existing tables, so a new
+        # column must be added by hand, once, harmlessly.
+        columns = {r[1] for r in
+                   self._conn.execute("PRAGMA table_info(documents)")}
+        if "trashed_utc" not in columns:
+            self._conn.execute(
+                "ALTER TABLE documents ADD COLUMN trashed_utc TEXT")
+            self._conn.commit()
+
     # -- lifecycle ----------------------------------------------------------
 
     def close(self) -> None:
@@ -161,9 +171,44 @@ class DocumentStore:
         return self._doc_from_row(row) if row else None
 
     def list_documents(self) -> list[Document]:
-        """All documents, oldest first (creation order = chronological)."""
+        """All LIVING documents, oldest first.  Wastebasketed documents
+        are banished from every list built on this — the library panel,
+        quick-open, search scopes, the Formatter — while remaining
+        fully intact underneath (get_document still reaches them)."""
         rows = self._conn.execute(
-            "SELECT * FROM documents ORDER BY created_utc, id"
+            "SELECT * FROM documents WHERE trashed_utc IS NULL "
+            "ORDER BY created_utc, id"
+        ).fetchall()
+        return [self._doc_from_row(r) for r in rows]
+
+    # -- the wastebasket (deletion as banishment, never destruction) --------
+
+    def trash_document(self, doc_id: int) -> None:
+        """Banish a document to the wastebasket.  Nothing is severed:
+        revisions, notes, tags, provenance links, and book-project
+        references all stay whole, so restore_document brings it back
+        exactly as it was — ten minutes or ten years later."""
+        self.get_document(doc_id)  # existence check
+        self._conn.execute(
+            "UPDATE documents SET trashed_utc = ? WHERE id = ?",
+            (_utc_now(), doc_id),
+        )
+        self._conn.commit()
+
+    def restore_document(self, doc_id: int) -> None:
+        """Bring a wastebasketed document back among the living."""
+        self.get_document(doc_id)  # existence check
+        self._conn.execute(
+            "UPDATE documents SET trashed_utc = NULL WHERE id = ?",
+            (doc_id,),
+        )
+        self._conn.commit()
+
+    def list_trashed(self) -> list[Document]:
+        """The wastebasket's contents, most recently banished first."""
+        rows = self._conn.execute(
+            "SELECT * FROM documents WHERE trashed_utc IS NOT NULL "
+            "ORDER BY trashed_utc DESC, id"
         ).fetchall()
         return [self._doc_from_row(r) for r in rows]
 
@@ -386,7 +431,8 @@ class DocumentStore:
             "SELECT d.* FROM documents d "
             "JOIN document_tags dt ON dt.doc_id = d.id "
             "JOIN tags t ON t.id = dt.tag_id "
-            "WHERE t.name = ? ORDER BY d.created_utc, d.id",
+            "WHERE t.name = ? AND d.trashed_utc IS NULL "
+            "ORDER BY d.created_utc, d.id",
             (name.strip(),),
         ).fetchall()
         return [self._doc_from_row(r) for r in rows]
@@ -669,7 +715,8 @@ class DocumentStore:
                 "ORDER BY d.created_utc, d.id",
                 (book, chapter, verse),
             ).fetchall()
-        return [self._doc_from_row(r) for r in rows]
+        docs = [self._doc_from_row(r) for r in rows]
+        return [d for d in docs if d.trashed_utc is None]
 
     def documents_sharing_verses(
         self, doc_id: int, limit: int = 30
@@ -685,7 +732,9 @@ class DocumentStore:
             "GROUP BY s2.doc_id ORDER BY shared DESC, s2.doc_id LIMIT ?",
             (doc_id, doc_id, limit),
         ).fetchall()
-        return [(self.get_document(r["other_id"]), r["shared"]) for r in rows]
+        pairs = [(self.get_document(r["other_id"]), r["shared"])
+                 for r in rows]
+        return [(d, n) for d, n in pairs if d.trashed_utc is None]
 
     def shared_verses(self, doc_a: int, doc_b: int) -> list[str]:
         """The specific verses two documents both cite, formatted."""
@@ -845,7 +894,9 @@ class DocumentStore:
             "FROM doc_text WHERE doc_text MATCH ? ORDER BY rank",
             (query,),
         ).fetchall()
-        return [(self.get_document(r["rowid"]), r["snip"]) for r in rows]
+        results = [(self.get_document(r["rowid"]), r["snip"]) for r in rows]
+        # The wastebasket is banished from search too.
+        return [(d, s) for d, s in results if d.trashed_utc is None]
 
     # -- internal helpers ---------------------------------------------------
 

@@ -306,6 +306,57 @@ def test_copyright_qr_image_and_caption(qapp, tmp_path):
     assert BookProject.load(path).copyright.include_qr is True
 
 
+def test_back_matter_document_structure(qapp, tmp_path):
+    """The indexes as styled blocks: Scripture in canonical book order
+    with verses numeric, Subject alphabetical, each index opening a
+    fresh page — and a missing vocabulary is a named error."""
+    from PyQt6.QtGui import QTextBlockFormat
+
+    from wordvault.formatter.indexes import build_back_matter
+    from wordvault.printing.format_file import PrintFormat
+
+    project = BookProject(title="B")
+    project.sections["scripture_index"] = True
+    project.sections["subject_index"] = True
+    project.vocabulary_path = str(tmp_path / "v.json")
+    (tmp_path / "v.json").write_text(
+        '{"Zeal": ["zeal"], "Ark": ["ark"]}', encoding="utf-8")
+
+    blocks = [
+        ("Chapter", 1, 1),
+        ("The ark rested (Genesis 8:4). Full of zeal.", 2, 0),
+        ("Matthew 24:31 sounds; the ark again.", 5, 0),
+    ]
+    document = build_back_matter(PrintFormat(name="T"), project, blocks)
+
+    texts = []
+    breaks = []
+    block = document.firstBlock()
+    while block.isValid():
+        if block.text():
+            texts.append(block.text())
+            breaks.append(block.blockFormat().pageBreakPolicy())
+        block = block.next()
+
+    s = texts.index("Scripture Index")
+    u = texts.index("Subject Index")
+    assert s < u                                  # scripture first
+    assert texts[s + 1] == "Genesis"              # canonical, not Matthew
+    assert texts[s + 2] == "8:4 — 2"
+    assert texts[s + 3] == "Matthew"
+    assert texts[s + 4] == "24:31 — 5"
+    assert texts[u + 1] == "Ark — 2, 5"           # alphabetical subjects
+    assert texts[u + 2] == "Zeal — 2"
+    # The Subject Index starts its own page.
+    assert breaks[u] == QTextBlockFormat.PageBreakFlag.PageBreak_AlwaysBefore
+
+    # Subject index without a vocabulary: a named, helpful error.
+    project.vocabulary_path = ""
+    from wordvault.formatter.book import BookProjectError
+    with pytest.raises(BookProjectError, match="vocabulary"):
+        build_back_matter(PrintFormat(name="T"), project, blocks)
+
+
 def test_build_book_pdf_writes_a_real_pdf(qapp, store, tmp_path, monkeypatch):
     """End to end: project -> assembled markdown -> manual-pagination
     renderer -> a PDF on disk.  (Glyph-level checks live in the print
@@ -355,7 +406,12 @@ def test_build_with_front_matter_adds_silent_pages(qapp, store, tmp_path,
     project.sections["title_page"] = True
     project.sections["copyright"] = True
     project.sections["toc"] = True
+    project.sections["scripture_index"] = True
+    project.sections["subject_index"] = True
     project.copyright.isbn = "979-8-0000-0000-0"
+    vocab = tmp_path / "v.json"
+    vocab.write_text('{"Nation": ["nation"]}', encoding="utf-8")
+    project.vocabulary_path = str(vocab)
     project.chapters = [
         ChapterRef(docs["Preface"].uuid, "Preface"),
         ChapterRef(docs["The Holy Nation"].uuid, "The Holy Nation"),
@@ -363,5 +419,5 @@ def test_build_with_front_matter_adds_silent_pages(qapp, store, tmp_path,
     out = tmp_path / "book_fm.pdf"
     build_book_pdf(store, project, out)
     pages = len(re.findall(rb"/Type /Page\b(?!s)", out.read_bytes()))
-    # Title + copyright + contents + two chapter pages.
-    assert pages >= 5, f"expected front matter + chapters, got {pages} pages"
+    # Title + copyright + contents + two chapter pages + two indexes.
+    assert pages >= 7, f"expected front+chapters+indexes, got {pages} pages"

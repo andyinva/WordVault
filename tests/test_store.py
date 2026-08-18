@@ -19,6 +19,69 @@ def store():
     s.close()
 
 
+# -- the wastebasket ---------------------------------------------------------
+
+def test_wastebasket_banishes_and_restores(tmp_path):
+    """Deletion as banishment (Aug 2026): a trashed document leaves
+    every list and search but is never destroyed — restore brings it
+    back whole, history and all."""
+    store = DocumentStore(tmp_path / "wb.db")
+    keep = store.create_document("Keeper")
+    store.save_revision(keep.id, "keeper words\n")
+    goner = store.create_document("Mistake")
+    store.save_revision(goner.id, "opened by accident\n")
+    store.save_revision(goner.id, "opened by accident, edited\n")
+    store.add_tag(goner.id, "Book: Test")
+
+    store.trash_document(goner.id)
+    assert [d.title for d in store.list_documents()] == ["Keeper"]
+    assert [d.title for d in store.list_trashed()] == ["Mistake"]
+    assert store.documents_with_tag("Book: Test") == []
+    if store.fts_available:
+        hits = [d.title for d, _s in store.search_current("accident")]
+        assert "Mistake" not in hits
+
+    # Underneath, nothing was severed.
+    assert store.get_document(goner.id).trashed_utc is not None
+    assert len(store.list_revisions(goner.id)) == 2
+
+    store.restore_document(goner.id)
+    assert [d.title for d in store.list_documents()] == ["Keeper", "Mistake"]
+    assert store.list_trashed() == []
+    assert [d.title for d in store.documents_with_tag("Book: Test")] == \
+        ["Mistake"]
+    assert store.current_text(goner.id) == "opened by accident, edited\n"
+    store.close()
+
+
+def test_wastebasket_column_migrates_old_libraries(tmp_path):
+    """A library created before the wastebasket gains the column
+    silently on open (the ALTER TABLE migration)."""
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        "CREATE TABLE documents ("
+        " id INTEGER PRIMARY KEY, uuid TEXT NOT NULL UNIQUE,"
+        " title TEXT NOT NULL, created_utc TEXT NOT NULL,"
+        " parent_doc_id INTEGER, original_path TEXT,"
+        " original_mtime TEXT);")
+    conn.execute(
+        "INSERT INTO documents (uuid, title, created_utc) "
+        "VALUES ('u1', 'Elder', '2020-01-01T00:00:00+00:00')")
+    conn.commit()
+    conn.close()
+
+    store = DocumentStore(db)          # migration happens here
+    docs = store.list_documents()
+    assert [d.title for d in docs] == ["Elder"]
+    assert docs[0].trashed_utc is None
+    store.trash_document(docs[0].id)   # and the new machinery works
+    assert store.list_documents() == []
+    store.close()
+
+
 # -- documents --------------------------------------------------------------
 
 def test_create_and_get_document(store):

@@ -365,18 +365,46 @@ def collect_headings(document, fmt: PrintFormat):
     return headings
 
 
+def collect_blocks(document, fmt: PrintFormat):
+    """Lay the body out at print size and report EVERY text-bearing
+    block as (text, page_number, heading_level) — heading_level 0 for
+    ordinary paragraphs.  This is the raw material of the back-matter
+    indexes: which words stand on which page, as the printer will
+    paint them."""
+    from PyQt6.QtCore import QSizeF
+    from PyQt6.QtGui import QTextFormat
+
+    width, height = text_area_pt(fmt)
+    document.setPageSize(QSizeF(width, height))
+    layout = document.documentLayout()
+
+    blocks = []
+    block = document.firstBlock()
+    while block.isValid():
+        text = block.text()
+        if text.strip():
+            level = block.blockFormat().property(
+                QTextFormat.Property.UserProperty) or 0
+            y = layout.blockBoundingRect(block).y()
+            blocks.append((text, int(y // height) + 1, int(level)))
+        block = block.next()
+    return blocks
+
+
 def print_book(printer, fmt: PrintFormat, *, body_document,
-               front_document=None, title: str = "",
+               front_document=None, back_document=None, title: str = "",
                author: str = "") -> None:
     """
     Hand-done pagination for a body document plus optional FRONT
-    MATTER (title page, copyright page — built by the Formatter).
+    MATTER (title page, copyright, contents) and BACK MATTER (the
+    subject and scripture indexes) — both built by the Formatter.
 
     The rules of the finished book:
       * front-matter pages carry NO header, footer, or page number —
         title and copyright pages are silent, by book convention;
-      * body page numbers restart at 1 on the first chapter page, and
-        {pages} counts body pages only;
+      * body page numbers restart at 1 on the first chapter page;
+      * back-matter pages CONTINUE the body's numbering (an index is
+        a numbered part of the book), and {pages} counts body + back;
       * mirror margins follow the PHYSICAL page position, so the spine
         edge keeps alternating correctly straight through the book.
 
@@ -399,16 +427,22 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
     paper_pt = _qt_page_size(fmt.page_size).sizePoints()  # QSize, points
     text_w_pt, text_h_pt = text_area_pt(fmt)
 
-    # (document, carries furniture?) in printing order.
+    # (document, carries furniture?, page-number offset) in book order.
     sections = []
     if front_document is not None:
         front_document.setPageSize(QSizeF(text_w_pt, text_h_pt))
-        sections.append((front_document, False))
+        sections.append((front_document, False, 0))
     body_document.setPageSize(QSizeF(text_w_pt, text_h_pt))
-    sections.append((body_document, True))
+    sections.append((body_document, True, 0))
+    numbered_pages = body_document.pageCount()
+    if back_document is not None:
+        back_document.setPageSize(QSizeF(text_w_pt, text_h_pt))
+        # Indexes continue the body's numbering where it left off.
+        sections.append((back_document, True, numbered_pages))
+        numbered_pages += back_document.pageCount()
 
     base_vars = {"title": title, "author": author, "date": date_str,
-                 "pages": body_document.pageCount()}
+                 "pages": numbered_pages}
     body_font = fmt.body.font or "Georgia"
 
     painter = QPainter(printer)
@@ -418,7 +452,7 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
         top_pt = fmt.margins.top * _MM_TO_PT
         bottom_pt = fmt.margins.bottom * _MM_TO_PT
         physical = 0                   # position in the WHOLE book
-        for document, furnished in sections:
+        for document, furnished, number_offset in sections:
             for page in range(document.pageCount()):
                 if physical:
                     printer.newPage()
@@ -437,7 +471,8 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
                 painter.restore()
 
                 if furnished:
-                    page_vars = dict(base_vars, page=page + 1)
+                    page_vars = dict(base_vars,
+                                     page=number_offset + page + 1)
                     painter.save()
                     painter.scale(dots_per_pt, dots_per_pt)
                     x_left, x_right = left_pt, left_pt + text_w_pt

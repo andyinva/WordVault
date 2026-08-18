@@ -5,6 +5,7 @@ on any machine, with or without PyQt6.
 """
 
 import dataclasses
+import json
 
 import pytest
 
@@ -99,6 +100,65 @@ def test_format_for_book_handles_no_heading1_defined():
     fmt = PrintFormat(name="Bare")
     booked = format_for_book(fmt)
     assert booked.headings[1].page_break_before is True
+
+
+def test_vocabulary_loading_both_forms(tmp_path):
+    """The Word Index Creator's vocabulary.json works as-is: plain
+    trigger lists, dict form with caps, and re: regex triggers."""
+    from wordvault.formatter.indexes import load_vocabulary
+
+    path = tmp_path / "vocab.json"
+    path.write_text(json.dumps({
+        "Abraham": ["Abraham", "Abram"],
+        "Glory": {"triggers": ["glory"], "max": 1, "scope": "chapter"},
+        "Cycles": {"triggers": ["re:\\bcycl(e|es|ical)\\b"]},
+    }), encoding="utf-8")
+    vocab = load_vocabulary(path)
+    by_name = {e.headword: e for e in vocab}
+    assert by_name["Abraham"].matches("Now ABRAM dwelt in the land")
+    assert by_name["Glory"].max_count == 1
+    assert by_name["Glory"].scope == "chapter"
+    assert by_name["Cycles"].matches("a cyclical journey")
+    # re: triggers are real regexes (searched, unanchored — same as the
+    # original tool): word boundaries are the vocabulary author's tool.
+    assert not by_name["Cycles"].matches("a bicycle")
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(BookProjectError, match="headword"):
+        load_vocabulary(bad)
+
+
+def test_collect_index_entries_pages_and_caps():
+    """The scan: scripture references gather their true pages in
+    canonical shape; subject caps limit marked paragraphs per chapter
+    (Andrew's max-2-per-chapter rule) and reset at the next chapter."""
+    from wordvault.formatter.indexes import VocabEntry, collect_index_entries
+
+    vocab = [VocabEntry("Glory", ["glory"], 2, "chapter"),
+             VocabEntry("Moriah", ["Moriah"])]
+    blocks = [
+        ("Chapter One", 1, 1),
+        ("The glory appears (Genesis 22:2).", 1, 0),
+        ("More glory here.", 2, 0),
+        ("Third glory mention is over the cap.", 3, 0),
+        ("Mount Moriah again, and Genesis 22:2 too.", 3, 0),
+        ("Chapter Two", 4, 1),
+        ("Fresh chapter, fresh glory cap.", 4, 0),
+        ("See 2 Chronicles 3:1 about Moriah.", 5, 0),
+    ]
+    scripture, subjects = collect_index_entries(blocks, vocab)
+
+    # Scripture: same verse on two pages -> both pages, once each.
+    genesis = scripture["Genesis"]
+    (key,) = genesis.keys()
+    assert key[3] == "22:2" and genesis[key] == [1, 3]
+    assert scripture["2 Chronicles"][(3, 1, 1, "3:1")] == [5]
+
+    # Subjects: chapter cap of 2 -> pages 1,2 kept, page 3 dropped,
+    # chapter two starts a fresh count (page 4).
+    assert subjects["Glory"] == [1, 2, 4]
+    assert subjects["Moriah"] == [3, 5]
 
 
 def test_resolve_chapters_reports_missing(tmp_path):

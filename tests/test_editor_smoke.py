@@ -339,6 +339,53 @@ def test_open_external_files_go_straight_into_the_vault(qapp, tmp_path):
     window.close()
 
 
+def test_trash_document_from_menu(qapp, tmp_path, monkeypatch):
+    """Document > Move to Wastebasket: confirm, banish, editor closes;
+    the document leaves the library list but survives underneath."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+
+    window = MainWindow(tmp_path / "trash.db")
+    doc = window._store.create_document("Oops")
+    window._store.save_revision(doc.id, "accidental words\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+
+    window._on_trash_document()
+    assert window._current_doc is None            # editor closed
+    assert window._store.list_documents() == []   # gone from the living
+    trashed = window._store.list_trashed()
+    assert [d.title for d in trashed] == ["Oops"]
+
+    window._store.restore_document(trashed[0].id)
+    assert [d.title for d in window._store.list_documents()] == ["Oops"]
+    window.close()
+
+
+def test_delete_selection_leaves_clipboard_alone(qapp, tmp_path):
+    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtWidgets import QApplication
+
+    window = MainWindow(tmp_path / "delsel.db")
+    doc = window._store.create_document("D")
+    window._store.save_revision(doc.id, "keep DELETE keep\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+
+    QApplication.clipboard().setText("precious clipboard")
+    cursor = window._editor.textCursor()
+    cursor.setPosition(5)
+    cursor.setPosition(11, QTextCursor.MoveMode.KeepAnchor)
+    window._editor.setTextCursor(cursor)
+    window._on_delete_selection()
+    assert window._editor.toPlainText() == "keep  keep\n"
+    assert QApplication.clipboard().text() == "precious clipboard"
+    window.close()
+
+
 def test_speakable_strips_typography():
     """Read Aloud must SAY words, not markup: 'kingdom', never
     'asterisk asterisk kingdom'."""

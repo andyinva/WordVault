@@ -315,6 +315,58 @@ chapter-and-verse parsing). **Document ▸ Documents Sharing Verses…**
 library remembers what you have written about Romans 8 even when you
 do not.
 
+### The Wastebasket
+
+"Nothing is ever lost" and "I opened that file by mistake" meet in
+the **Wastebasket**: deletion as banishment, never destruction.
+**Document ▸ Move to Wastebasket…** (after a confirmation) makes a
+document vanish from the library list, searches, quick-open, Recent,
+tags, and the Formatter — for every daily purpose it is gone. But
+nothing is severed: **Library ▸ Wastebasket…** lists the banished,
+and **Restore** brings one back whole — text, history, notes, and
+tags — ten minutes or ten years later. There is deliberately no
+destroy button; at the size of text, eternal mercy is cheap.
+
+(Its small sibling: **Edit ▸ Delete Selection** removes highlighted
+text *without touching the clipboard* — Cut's quiet twin, for when
+what you copied earlier must stay copied.)
+
+#### What deletion reveals about the vault
+
+The Wastebasket is a good place to watch the vault's principles at
+work, because "delete" is where they are tested.
+
+In a folder of files, deleting is simple: a file is an island, and
+removing it disturbs nothing else. In the vault, a document is not an
+island — it is a knot in a web. Its revisions hang beneath it. Notes
+are pinned to it. Tags point at it. Passages gathered *out* of it
+into other essays carry provenance links back *into* it. It may sit
+in a version chain beside its own earlier drafts, be listed as a
+chapter in a book project, and be indexed by every Scripture verse it
+cites. A true deletion would have to cut every one of those threads —
+and each cut would quietly falsify something else: a gathered passage
+that no longer knows where it came from, a book that has lost a
+chapter, a verse index pointing at nothing.
+
+So the vault does what it always does: it **adds a fact instead of
+destroying one**. Banishing a document writes a single small truth —
+*banished on this date* — and every list, search, and menu simply
+declines to show what carries that mark. The web is untouched
+underneath. That is why Restore is perfect and instant: there is
+nothing to reassemble, only a mark to lift. And it is the same move
+the vault makes everywhere — "Restore this version" adds a revision
+rather than rewriting history; a search-and-replace saves new
+revisions rather than editing old ones; even the spelling watcher
+only ever appends to its log. Append a fact, never subtract one:
+that is the whole design, visible in a wastebasket.
+
+It also explains what would otherwise seem stubborn — why there is
+no "empty wastebasket." Destruction is the one operation that cannot
+be appended, and a vault holding thirty years of essays in less
+space than a single photograph never needs it. The confirmation
+question you answer when banishing is honest for the same reason: it
+does not warn "this cannot be undone," because in WordVault, it can.
+
 ### Keeping it safe
 
 - **Library ▸ Back Up Library…** writes one encrypted file (AES-256);
@@ -402,8 +454,22 @@ Checkboxes choose what the book includes, in book order:
   There is no refresh step, and there cannot be a stale number: the
   body's page numbering restarts at 1 after the front matter, so the
   Contents' own length never shifts the numbers it reports.
-- *(Coming: subject index and scripture index as back matter, and a
-  KDP cover creator.)*
+- **Scripture Index** — every Bible reference in the book, in
+  canonical order (Genesis before Exodus, verses numeric), each with
+  the pages where it is cited. Found by WordVault's own reference
+  parser; needs nothing from you.
+- **Subject Index** — headwords from a controlled vocabulary
+  (choose the vocabulary.json with **Subject Vocabulary…**; the Word
+  Index Creator's file works unchanged). Triggers are
+  case-insensitive substrings, or regular expressions prefixed
+  `re:`; per-term caps — like "at most 2 pages per chapter" — keep
+  common words from flooding the index, exactly as in the original
+  tool.
+- Index pages sit after the last chapter and **continue the body's
+  page numbering**, as book back matter does. Their page numbers are
+  read from the same layout the printer paints — like the table of
+  contents, they cannot go stale.
+- *(Coming: a KDP cover creator.)*
 
 Front-matter pages print silently — no headers or page numbers — as
 real books do; chapter page numbers begin at 1; mirror margins keep

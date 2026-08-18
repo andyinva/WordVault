@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS documents (
     created_utc    TEXT NOT NULL,
     parent_doc_id  INTEGER REFERENCES documents(id),
     original_path  TEXT,
-    original_mtime TEXT
+    original_mtime TEXT,
+    trashed_utc    TEXT              -- set = in the wastebasket (never destroyed)
 );
 
 -- Append-only history.  Rows are never updated or deleted.

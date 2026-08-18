@@ -44,7 +44,9 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 
 from wordvault.formatter.book import BookProject, BookProjectError, ChapterRef
@@ -65,7 +67,8 @@ _SECTION_LABELS = {
 }
 
 #: Sections whose stage has shipped — their checkboxes are live.
-_LIVE_SECTIONS = {"title_page", "copyright", "toc"}
+_LIVE_SECTIONS = {"title_page", "copyright", "toc",
+                  "subject_index", "scripture_index"}
 
 
 class FormatterWindow(QDialog):
@@ -84,7 +87,7 @@ class FormatterWindow(QDialog):
 
         self.setWindowTitle("WordVault Book Formatter")
         self.setModal(False)
-        self.resize(760, 560)
+        self.resize(940, 560)   # room for the sections column + lists
         self._build_ui()
         self._reload_library_list()
         self._reopen_last_project()
@@ -113,8 +116,60 @@ class FormatterWindow(QDialog):
         row.addWidget(self._format_combo, stretch=2)
         outer.addLayout(row)
 
-        # The two lists: library on the left, the book on the right.
+        # The book's SECTIONS: a vertical, scrolling checklist down the
+        # far-left side.  Vertical on purpose (Aug 2026 request): the
+        # list can grow beyond the window's height — indexes, covers,
+        # and whatever the years add — and simply scrolls, where the
+        # old horizontal row would have run out of window.
+        section_host = QWidget()
+        section_col = QVBoxLayout(section_host)
+        section_col.setContentsMargins(6, 4, 6, 4)
+        self._section_checks: dict[str, QCheckBox] = {}
+        for key, (label, stage) in _SECTION_LABELS.items():
+            check = QCheckBox(label)
+            if key not in _LIVE_SECTIONS:
+                check.setEnabled(False)             # lit in its stage
+                check.setToolTip(f"Coming in stage {stage}")
+            section_col.addWidget(check)
+            self._section_checks[key] = check
+        details_btn = QPushButton("Copyright &Details…")
+        details_btn.setToolTip(
+            "ISBN, copyright year, edition, rights statement, and the\n"
+            "Scripture-translation notice printed on the copyright page"
+        )
+        details_btn.clicked.connect(self._on_copyright_details)
+        section_col.addWidget(details_btn)
+
+        vocab_btn = QPushButton("Subject &Vocabulary…")
+        vocab_btn.setToolTip(
+            "The controlled vocabulary (vocabulary.json) the Subject "
+            "Index\nis built from — the Word Index Creator's file "
+            "works as-is"
+        )
+        vocab_btn.clicked.connect(self._on_choose_vocabulary)
+        section_col.addWidget(vocab_btn)
+        self._vocab_label = QLabel("(no vocabulary chosen)")
+        self._vocab_label.setWordWrap(True)
+        self._vocab_label.setStyleSheet("color: #667; font-size: 8pt;")
+        section_col.addWidget(self._vocab_label)
+        section_col.addStretch()
+
+        section_scroll = QScrollArea()
+        section_scroll.setWidget(section_host)
+        section_scroll.setWidgetResizable(True)
+        section_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        section_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        section_box = QGroupBox("Sections")
+        section_box_layout = QVBoxLayout(section_box)
+        section_box_layout.setContentsMargins(2, 6, 2, 2)
+        section_box_layout.addWidget(section_scroll)
+        section_box.setMaximumWidth(230)
+
+        # The columns: sections | library | transfer buttons | chapters.
         lists = QHBoxLayout()
+        lists.addWidget(section_box)
 
         left_col = QVBoxLayout()
         left_col.addWidget(QLabel("Library documents (double-click to add):"))
@@ -160,28 +215,6 @@ class FormatterWindow(QDialog):
         lists.addLayout(right_col, stretch=3)
 
         outer.addLayout(lists, stretch=1)
-
-        # Section checkboxes — the book's optional parts.  Sections not
-        # yet implemented are visible but disabled, labelled with the
-        # stage that delivers them: the roadmap lives in the window.
-        section_box = QGroupBox("Sections to include")
-        section_row = QHBoxLayout(section_box)
-        self._section_checks: dict[str, QCheckBox] = {}
-        for key, (label, stage) in _SECTION_LABELS.items():
-            check = QCheckBox(label)
-            if key not in _LIVE_SECTIONS:
-                check.setEnabled(False)             # lit in its stage
-                check.setToolTip(f"Coming in stage {stage}")
-            section_row.addWidget(check)
-            self._section_checks[key] = check
-        details_btn = QPushButton("Copyright &Details…")
-        details_btn.setToolTip(
-            "ISBN, copyright year, edition, rights statement, and the\n"
-            "Scripture-translation notice printed on the copyright page"
-        )
-        details_btn.clicked.connect(self._on_copyright_details)
-        section_row.addWidget(details_btn)
-        outer.addWidget(section_box)
 
         # Project and build buttons.
         bottom = QHBoxLayout()
@@ -345,6 +378,7 @@ class FormatterWindow(QDialog):
         # last save; remember that tag so a rename cleans it up.
         self._last_book_tag = (f"Book: {project.title.strip()}"
                                if project.title.strip() else None)
+        self._refresh_vocab_label()
         self._refresh_title_bar()
 
     def _refresh_title_bar(self) -> None:
@@ -440,6 +474,24 @@ class FormatterWindow(QDialog):
             path += ".wvbook"       # same suffix guard printing needed
         self._project_path = Path(path)
         self._on_save_project()
+
+    def _on_choose_vocabulary(self) -> None:
+        """Pick the vocabulary.json the Subject Index reads.  Saved in
+        the .wvbook, so a book keeps its vocabulary across sessions."""
+        start = (str(Path(self._project.vocabulary_path).parent)
+                 if self._project.vocabulary_path else "")
+        path, _f = QFileDialog.getOpenFileName(
+            self, "Choose Subject Vocabulary", start,
+            "Vocabulary files (*.json)")
+        if path:
+            self._project.vocabulary_path = path
+            self._refresh_vocab_label()
+
+    def _refresh_vocab_label(self) -> None:
+        name = (Path(self._project.vocabulary_path).name
+                if self._project.vocabulary_path else
+                "(no vocabulary chosen)")
+        self._vocab_label.setText(name)
 
     # -- copyright details -------------------------------------------------
 

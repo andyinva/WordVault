@@ -554,6 +554,9 @@ class MainWindow(QMainWindow):
 
         add_edit("&Read Aloud from Cursor", "Ctrl+Shift+R",
                  self._on_read_aloud)
+        # Delete-not-Cut: removes the selection WITHOUT touching the
+        # clipboard, so whatever you copied earlier stays copied.
+        add_edit("Delete Selectio&n", None, self._on_delete_selection)
         edit_menu.addSeparator()
 
         add_edit("&Undo", QKeySequence.StandardKey.Undo, lambda: self._editor.undo())
@@ -609,6 +612,14 @@ class MainWindow(QMainWindow):
         tags_action = QAction("Edit &Tags…", self)
         tags_action.triggered.connect(self._on_edit_tags)
         doc_menu.addAction(tags_action)
+
+        trash_action = QAction("Move to &Wastebasket…", self)
+        trash_action.setToolTip(
+            "Banish this document from the library — never destroyed, "
+            "always restorable from Library ▸ Wastebasket"
+        )
+        trash_action.triggered.connect(self._on_trash_document)
+        doc_menu.addAction(trash_action)
 
         doc_menu.addSeparator()
 
@@ -765,6 +776,15 @@ class MainWindow(QMainWindow):
         restore_action = QAction("Rest&ore Library from Backup…", self)
         restore_action.triggered.connect(self._on_restore_library)
         library_menu.addAction(restore_action)
+
+        library_menu.addSeparator()
+
+        wastebasket_action = QAction("&Wastebasket…", self)
+        wastebasket_action.setToolTip(
+            "Banished documents — restore any of them, whole, anytime"
+        )
+        wastebasket_action.triggered.connect(self._on_wastebasket)
+        library_menu.addAction(wastebasket_action)
 
         library_menu.addSeparator()
 
@@ -1180,6 +1200,103 @@ class MainWindow(QMainWindow):
             original_mtime=mtime, created_utc=created)
         self._store.save_revision(doc.id, text, origin="file open")
         return self._store.get_document(doc.id)
+
+    # ------------------------------------------------- the wastebasket --
+
+    def _on_delete_selection(self) -> None:
+        """Edit ▸ Delete Selection: remove highlighted text WITHOUT
+        touching the clipboard (Cut's quiet sibling)."""
+        cursor = self._editor.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
+        else:
+            self.statusBar().showMessage("Nothing selected.", 3000)
+
+    def _on_trash_document(self) -> None:
+        """Document ▸ Move to Wastebasket: banishment, not destruction.
+        The document leaves every list and search, but its history,
+        notes, and tags stay whole — Library ▸ Wastebasket restores it
+        exactly as it was, whenever."""
+        if self._current_doc is None:
+            return
+        doc = self._current_doc
+        answer = QMessageBox.question(
+            self, "Move to Wastebasket",
+            f"Move '{doc.title}' to the Wastebasket?\n\nIt disappears "
+            f"from the library, searches, and books — but nothing is "
+            f"destroyed. Library ▸ Wastebasket… can restore it, whole, "
+            f"at any time.")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._autosave()
+        self._save_current_note()
+        self._store.trash_document(doc.id)
+        self._on_close_document()
+        self._reload_document_list()
+        self.statusBar().showMessage(
+            f"'{doc.title}' moved to the Wastebasket.", 6000)
+
+    def _on_wastebasket(self) -> None:
+        """Library ▸ Wastebasket: the banished, restorable forever.
+        There is deliberately NO destroy button — the vault's first
+        promise is that nothing is ever lost, and at the size of text,
+        eternal mercy is cheap."""
+        from PyQt6.QtWidgets import (
+            QDialog,
+            QHBoxLayout,
+            QListWidgetItem,
+            QPushButton,
+            QVBoxLayout,
+        )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Wastebasket")
+        dialog.resize(520, 420)
+        layout = QVBoxLayout(dialog)
+        info = QLabel(
+            "Banished documents. Nothing here is ever destroyed — "
+            "select one and Restore brings it back whole: text, "
+            "history, notes, and tags.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        listing = QListWidget(dialog)
+        layout.addWidget(listing, stretch=1)
+
+        def refill():
+            listing.clear()
+            for doc in self._store.list_trashed():
+                item = QListWidgetItem(
+                    f"{doc.title}   (banished {_local_time(doc.trashed_utc)})")
+                item.setData(Qt.ItemDataRole.UserRole, doc.id)
+                listing.addItem(item)
+            if listing.count() == 0:
+                empty = QListWidgetItem("(the wastebasket is empty)")
+                empty.setFlags(Qt.ItemFlag.NoItemFlags)
+                listing.addItem(empty)
+
+        def restore():
+            item = listing.currentItem()
+            if item is None or item.data(Qt.ItemDataRole.UserRole) is None:
+                return
+            doc_id = item.data(Qt.ItemDataRole.UserRole)
+            self._store.restore_document(doc_id)
+            self._reload_document_list()
+            self._reload_tag_filter()
+            refill()
+            self.statusBar().showMessage("Restored.", 4000)
+
+        buttons = QHBoxLayout()
+        restore_btn = QPushButton("&Restore Selected", dialog)
+        restore_btn.clicked.connect(restore)
+        buttons.addWidget(restore_btn)
+        buttons.addStretch()
+        close_btn = QPushButton("Close", dialog)
+        close_btn.clicked.connect(dialog.accept)
+        buttons.addWidget(close_btn)
+        layout.addLayout(buttons)
+
+        refill()
+        dialog.exec()
 
     def _on_refresh_formatting(self) -> None:
         """Library ▸ Refresh Formatting from Originals: re-read every
@@ -1672,6 +1789,8 @@ class MainWindow(QMainWindow):
                 doc = self._store.get_document(doc_id)
             except KeyError:
                 continue  # e.g. a different library than last session
+            if doc.trashed_utc:
+                continue  # the wastebasket is banished from Recent too
             action = self._recent_menu.addAction(doc.title)
             action.triggered.connect(
                 lambda _c, d=doc_id: (self._autosave(), self._open_document(d))

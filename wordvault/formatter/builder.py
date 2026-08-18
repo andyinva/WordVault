@@ -117,9 +117,11 @@ def build_book_pdf(store, project: BookProject, out_path: str | Path) -> None:
     from PyQt6.QtPrintSupport import QPrinter
 
     from wordvault.formatter.frontmatter import build_front_matter
+    from wordvault.formatter.indexes import build_back_matter
     from wordvault.printing.renderer import (
         apply_page_setup,
         build_print_document,
+        collect_blocks,
         collect_headings,
         print_book,
     )
@@ -140,11 +142,19 @@ def build_book_pdf(store, project: BookProject, out_path: str | Path) -> None:
     toc_entries = (collect_headings(body, fmt)
                    if project.sections.get("toc") else None)
     front = build_front_matter(fmt, project, toc_entries)
+    # Back matter reads the SAME layout the printer paints, so index
+    # page numbers are correct by construction (stage F4).
+    back = None
+    if (project.sections.get("subject_index")
+            or project.sections.get("scripture_index")):
+        back = build_back_matter(fmt, project, collect_blocks(body, fmt))
 
-    if front is None and not fmt.needs_manual_pagination():
-        # A plain format with no front matter: Qt can paginate alone.
+    if front is None and back is None \
+            and not fmt.needs_manual_pagination():
+        # A plain format with no extra matter: Qt can paginate alone.
         apply_page_setup(printer, fmt)
         body.print(printer)
         return
     print_book(printer, fmt, body_document=body, front_document=front,
+               back_document=back,
                title=project.title, author=project.author)

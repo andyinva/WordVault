@@ -34,6 +34,9 @@ class Document:
     parent_doc_id: Optional[int]  # earlier version of the same material, or None
     original_path: Optional[str]  # source .docx path if this came from ingest
     original_mtime: Optional[str] # source file date, used for chronological order
+    #: When set, the document is in the WASTEBASKET: banished from every
+    #: list and search, but never destroyed — restorable whole, forever.
+    trashed_utc: Optional[str] = None
 
 
 @dataclass(frozen=True)

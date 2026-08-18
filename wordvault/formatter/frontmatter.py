@@ -125,13 +125,16 @@ def _qr_image(payload: str):
 
 def _write(cursor: QTextCursor, text: str, *, family: str,
            size_pt: float, first: bool, align=Qt.AlignmentFlag.AlignHCenter,
-           top_margin_pt: float = 0.0, italic: bool = False,
+           top_margin_pt: float = 0.0, left_margin_pt: float = 0.0,
+           italic: bool = False, bold: bool = False,
            page_break: bool = False) -> None:
-    """Append one styled block (the front matter is simple enough that
-    every element is a single block with one uniform format)."""
+    """Append one styled block (front and back matter are simple
+    enough that every element is a single block with one uniform
+    format — the indexes module borrows this writer too)."""
     block = QTextBlockFormat()
     block.setAlignment(align)
     block.setTopMargin(top_margin_pt)
+    block.setLeftMargin(left_margin_pt)
     if page_break and not first:
         block.setPageBreakPolicy(
             QTextBlockFormat.PageBreakFlag.PageBreak_AlwaysBefore)
@@ -139,6 +142,7 @@ def _write(cursor: QTextCursor, text: str, *, family: str,
     font = QFont(family)
     font.setPointSizeF(size_pt)
     font.setItalic(italic)
+    font.setBold(bold)
     char.setFont(font)
     if first:
         cursor.setBlockFormat(block)

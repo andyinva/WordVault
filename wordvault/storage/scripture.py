@@ -108,6 +108,33 @@ def _build_book_map() -> dict[str, str]:
 
 _BOOKS = _build_book_map()
 
+#: The 66 books in CANONICAL order — what a Scripture index sorts by
+#: (Genesis before Exodus, Matthew after Malachi), never the alphabet.
+CANON = (
+    "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy",
+    "Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel",
+    "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles",
+    "Ezra", "Nehemiah", "Esther", "Job", "Psalms", "Proverbs",
+    "Ecclesiastes", "Song of Solomon", "Isaiah", "Jeremiah",
+    "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos",
+    "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah",
+    "Haggai", "Zechariah", "Malachi",
+    "Matthew", "Mark", "Luke", "John", "Acts", "Romans",
+    "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians",
+    "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians",
+    "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews",
+    "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John",
+    "Jude", "Revelation",
+)
+
+_CANON_NUMBER = {name: i + 1 for i, name in enumerate(CANON)}
+
+
+def book_number(book: str) -> int:
+    """A book's 1-based canonical position (Genesis=1 ... Revelation=66);
+    99 for anything unrecognized, so strays sort last, not crash."""
+    return _CANON_NUMBER.get(book, 99)
+
 # Longest keys first so "1 corinthians" wins over plain "corinthians",
 # and "song of solomon" over nothing at all.  (?<![A-Za-z0-9]) stops
 # "context 3:16" from matching the "ex" inside "context".
