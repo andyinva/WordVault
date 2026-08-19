@@ -172,6 +172,22 @@ def test_reopen_last_switch(qapp):
     assert dlg.reopen_last is True
 
 
+def test_font_family_choice(qapp):
+    """The editor-typeface knob: always reports SOME family, and
+    honors a remembered choice.  The round trip only makes sense
+    where fonts exist — Windows' offscreen platform has none (the
+    same desert the print tests live with), so it is skipped there."""
+    dlg = _dialog(qapp)
+    assert dlg.font_family            # a family name, even fontless
+
+    if dlg._font_combo.count() == 0:
+        pytest.skip("offscreen platform has no fonts to choose from")
+    remembered = dlg._font_combo.itemText(0)     # any real font name
+    dlg2 = SettingsDialog(None, encrypted=False, idle_seconds=3,
+                          font_size=12, font_family=remembered)
+    assert dlg2.font_family == remembered
+
+
 def test_recent_limit_default_and_change(qapp):
     """The 'Recent list remembers' knob: defaults to 25, changeable,
     and the spin box clamps out-of-range values."""

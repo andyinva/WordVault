@@ -131,6 +131,20 @@ class EditorPane(QPlainTextEdit):
         # Heading sizes are relative to the base font — restyle.
         self.markdown_highlighter.rehighlight()
 
+    def set_font_family(self, family: str) -> None:
+        """The editor's typeface (a Settings choice; empty = leave the
+        platform default).  Display only — the printed page's fonts
+        come from .wvfmt files.  Missing glyphs (Hebrew, Greek...) are
+        borrowed from other installed fonts by Qt automatically, and a
+        family absent on this system (Georgia on stock Ubuntu) falls
+        back to the nearest look-alike rather than failing."""
+        if not family:
+            return
+        font = self.font()
+        font.setFamily(family)
+        self.setFont(font)
+        self.markdown_highlighter.rehighlight()
+
     # -- Markdown editing commands (Edit menu / shortcuts) ------------------
     #
     # All of these edit the PLAIN text — they type the Markdown characters

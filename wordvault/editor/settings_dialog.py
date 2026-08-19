@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QFontComboBox,
     QFormLayout,
     QLabel,
     QLineEdit,
@@ -47,6 +48,7 @@ class SettingsDialog(QDialog):
         author: str = "",
         recent_limit: int = 25,
         reopen_last: bool = True,
+        font_family: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -68,6 +70,17 @@ class SettingsDialog(QDialog):
         self._font_spin.setRange(8, 28)
         self._font_spin.setSuffix(" pt")
         self._font_spin.setValue(font_size)
+
+        # The editor's typeface: QFontComboBox lists whatever fonts THIS
+        # system has (Windows fonts on Windows, Linux fonts on Ubuntu).
+        # Display only — printed pages take their fonts from .wvfmt
+        # files.  A family missing on the other platform falls back to
+        # Qt's nearest look-alike, never an error.
+        self._font_combo = QFontComboBox(self)
+        if font_family:
+            from PyQt6.QtGui import QFont
+
+            self._font_combo.setCurrentFont(QFont(font_family))
 
         # How far back File > Recent remembers (the list itself lives
         # in QSettings; this is only its length).
@@ -105,6 +118,7 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         form.addRow("Author name:", self._author_edit)
         form.addRow("Auto-save after a pause of:", self._idle_spin)
+        form.addRow("Editor font:", self._font_combo)
         form.addRow("Editor font size:", self._font_spin)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
@@ -140,6 +154,10 @@ class SettingsDialog(QDialog):
     @property
     def font_size(self) -> int:
         return self._font_spin.value()
+
+    @property
+    def font_family(self) -> str:
+        return self._font_combo.currentFont().family()
 
     @property
     def recent_limit(self) -> int:

@@ -156,6 +156,8 @@ class MainWindow(QMainWindow):
         self._editor.set_font_point_size(
             int(self._settings.value("font_pt", 12))
         )
+        self._apply_font_family(
+            str(self._settings.value("font_family", "")))
         # Restore the persisted View toggles.
         if self._settings.value("line_numbers", False, type=bool):
             self._line_numbers_action.setChecked(True)
@@ -918,6 +920,7 @@ class MainWindow(QMainWindow):
             author=str(self._settings.value("author", "")),
             recent_limit=self._recent_limit(),
             reopen_last=self._settings.value("reopen_last", True, type=bool),
+            font_family=self._editor.font().family(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -925,8 +928,10 @@ class MainWindow(QMainWindow):
         # Everyday knobs: apply now, remember for next start.
         self._editor.set_idle_ms(dialog.idle_seconds * 1000)
         self._editor.set_font_point_size(dialog.font_size)
+        self._apply_font_family(dialog.font_family)
         self._settings.setValue("idle_ms", dialog.idle_seconds * 1000)
         self._settings.setValue("font_pt", dialog.font_size)
+        self._settings.setValue("font_family", dialog.font_family)
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
         self._settings.setValue("reopen_last", dialog.reopen_last)
@@ -1643,6 +1648,17 @@ class MainWindow(QMainWindow):
         bar = self._editor.verticalScrollBar()
         bar.setValue(bar.maximum() if pos is None
                      else min(pos, bar.maximum()))
+
+    def _apply_font_family(self, family: str) -> None:
+        """Dress the editor AND the notes pane in the chosen typeface
+        (the notes stay one point smaller, as always).  Empty family =
+        the platform default, untouched."""
+        if not family:
+            return
+        self._editor.set_font_family(family)
+        notes_font = self._notes.font()
+        notes_font.setFamily(family)
+        self._notes.setFont(notes_font)
 
     def _set_edit_mode_visuals(self, live: bool) -> None:
         """Repaint the editor's mode border (see the stylesheet where

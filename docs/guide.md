@@ -494,8 +494,11 @@ alternating correctly straight through.
 ## Part VII — Settings
 
 **Help ▸ Settings…** holds the everyday knobs: **Author name** (fills
-`{author}` in print formats), **auto-save pause**, **editor font
-size**, how far back **File ▸ Recent** remembers (25 unless you say
+`{author}` in print formats), **auto-save pause**, the **editor font**
+(any font installed on this system — display only, since printed
+pages take their fonts from .wvfmt files; a family the other platform
+lacks falls back to its nearest look-alike) and its **size**, how far
+back **File ▸ Recent** remembers (25 unless you say
 otherwise), whether WordVault **reopens the last document at
 startup** (on by default), and **library encryption**.
 
