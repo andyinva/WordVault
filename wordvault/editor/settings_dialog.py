@@ -49,6 +49,8 @@ class SettingsDialog(QDialog):
         recent_limit: int = 25,
         reopen_last: bool = True,
         font_family: str = "",
+        notes_family: str = "",
+        notes_size: int = 10,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -81,6 +83,18 @@ class SettingsDialog(QDialog):
             from PyQt6.QtGui import QFont
 
             self._font_combo.setCurrentFont(QFont(font_family))
+
+        # The NOTES pane's own typeface and size (they need not match
+        # the editor's — a smaller, plainer face suits marginalia).
+        self._notes_font_combo = QFontComboBox(self)
+        if notes_family:
+            from PyQt6.QtGui import QFont
+
+            self._notes_font_combo.setCurrentFont(QFont(notes_family))
+        self._notes_size_spin = QSpinBox(self)
+        self._notes_size_spin.setRange(7, 24)
+        self._notes_size_spin.setSuffix(" pt")
+        self._notes_size_spin.setValue(notes_size)
 
         # How far back File > Recent remembers (the list itself lives
         # in QSettings; this is only its length).
@@ -120,6 +134,8 @@ class SettingsDialog(QDialog):
         form.addRow("Auto-save after a pause of:", self._idle_spin)
         form.addRow("Editor font:", self._font_combo)
         form.addRow("Editor font size:", self._font_spin)
+        form.addRow("Notes font:", self._notes_font_combo)
+        form.addRow("Notes font size:", self._notes_size_spin)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
         form.addRow(self._enc_box)
@@ -158,6 +174,14 @@ class SettingsDialog(QDialog):
     @property
     def font_family(self) -> str:
         return self._font_combo.currentFont().family()
+
+    @property
+    def notes_family(self) -> str:
+        return self._notes_font_combo.currentFont().family()
+
+    @property
+    def notes_size(self) -> int:
+        return self._notes_size_spin.value()
 
     @property
     def recent_limit(self) -> int:

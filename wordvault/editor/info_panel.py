@@ -40,6 +40,7 @@ class InfoPanel(QWidget):
         self._edited = QLabel("—")
         self._revisions = QLabel("—")
         self._words = QLabel("—")
+        self._edit_time = QLabel("—")
         self._position = QLabel("—")
         self._position.setWordWrap(True)
         self._tags = QLabel("—")
@@ -57,6 +58,9 @@ class InfoPanel(QWidget):
         form.addRow("Last edit:", self._edited)
         form.addRow("Revisions:", self._revisions)
         form.addRow("Words:", self._words)
+        # ACTIVE writing time only — keystroke-to-keystroke, with long
+        # gaps uncounted.  Never "time the document sat open".
+        form.addRow("Time writing:", self._edit_time)
         form.addRow("Position:", self._position)
         form.addRow("Tags:", self._tags)
         form.addRow("Verses cited:", self._verses)
@@ -78,6 +82,7 @@ class InfoPanel(QWidget):
         word_count: int,
         tags: list[str],
         verse_count: int = 0,
+        editing_time: str = "—",
     ) -> None:
         """Document-level facts (refreshed on open/save)."""
         self._title.setText(title)
@@ -86,6 +91,7 @@ class InfoPanel(QWidget):
         self._edited.setText(last_edited)
         self._revisions.setText(str(revision_count))
         self._words.setText(f"{word_count:,}")
+        self._edit_time.setText(editing_time)
         self._tags.setText(", ".join(tags) if tags else "none")
         self._verses.setText(str(verse_count) if verse_count else "none")
 
@@ -100,8 +106,8 @@ class InfoPanel(QWidget):
 
     def clear(self) -> None:
         for label in (self._title, self._chain, self._created, self._edited,
-                      self._revisions, self._words, self._position, self._tags,
-                      self._verses):
+                      self._revisions, self._words, self._edit_time,
+                      self._position, self._tags, self._verses):
             label.setText("—")
 
 

@@ -91,6 +91,23 @@ def _sentence_start(paragraph_text: str, offset: int) -> int:
     return start
 
 
+#: A keystroke-to-keystroke gap this long or shorter counts as writing
+#: (thinking between sentences); anything longer means you were away.
+EDIT_GAP_SECONDS = 60.0
+
+
+def _format_edit_time(total_seconds: int) -> str:
+    """Seconds of writing -> a human phrase for the info panel."""
+    if total_seconds <= 0:
+        return "none yet"
+    if total_seconds < 60:
+        return "under a minute"
+    hours, minutes = divmod(total_seconds // 60, 60)
+    if hours:
+        return f"{hours} h {minutes} min"
+    return f"{minutes} min"
+
+
 def _speakable(markdown_text: str) -> str:
     """Markdown -> the words a voice should SAY: heading marks, quote
     and list markers, and emphasis asterisks are silent typography,
@@ -158,6 +175,7 @@ class MainWindow(QMainWindow):
         )
         self._apply_font_family(
             str(self._settings.value("font_family", "")))
+        self._apply_notes_font()      # notes overrides, when chosen
         # Restore the persisted View toggles.
         if self._settings.value("line_numbers", False, type=bool):
             self._line_numbers_action.setChecked(True)
@@ -231,6 +249,11 @@ class MainWindow(QMainWindow):
 
         self._editor = EditorPane(self)
         self._editor.pause_detected.connect(self._autosave)
+        # The editing clock: counts ACTIVE writing time, not open time.
+        self._editor.user_edited.connect(self._on_edit_activity)
+        self._edit_clock_doc: Optional[int] = None
+        self._edit_last_monotonic: Optional[float] = None
+        self._edit_pending = 0.0
         self._editor.textChanged.connect(self._update_status)
         self._editor.cursorPositionChanged.connect(self._refresh_position)
         self._editor.correction_made.connect(self._on_suggestion_correction)
@@ -278,6 +301,17 @@ class MainWindow(QMainWindow):
             if not self._notes.signalsBlocked() else None
         )
 
+        # Notes get spelling too: underlines share the editor's
+        # dictionary and its View ▸ Check Spelling toggle; right-click
+        # suggestions come from _on_notes_context_menu.
+        from wordvault.editor.markdown_highlighter import SpellingHighlighter
+
+        self._notes_highlighter = SpellingHighlighter(self._notes.document())
+        self._notes.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self._notes.customContextMenuRequested.connect(
+            self._on_notes_context_menu)
+
         # Anchored notes: starting a note on an empty line stamps it
         # with the editor's current cursor position ("▸ line 143 (…): ")
         # and double-clicking such a stamp jumps the editor there.
@@ -305,11 +339,50 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._title_label)
         layout.addWidget(self._split, stretch=1)
-        layout.addWidget(self._find_bar)
-        layout.addWidget(self._timeline)
         self.setCentralWidget(container)
+
+        # The serif TITLE HEADER spans the window's full top as a
+        # locked, chromeless dock — the mirror of the timeline strip
+        # below.  With the top corners assigned to it, the side panels
+        # (Outline, Doc Info, ...) BEGIN where the editor begins:
+        # every upper border on one line (Aug 2026 request), matching
+        # the aligned lower borders.
+        title_dock = QDockWidget("", self)
+        title_dock.setObjectName("TitleDock")       # saveState needs it
+        title_dock.setWidget(self._title_label)
+        title_dock.setTitleBarWidget(QWidget(title_dock))    # no chrome
+        title_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        self.setCorner(Qt.Corner.TopLeftCorner,
+                       Qt.DockWidgetArea.TopDockWidgetArea)
+        self.setCorner(Qt.Corner.TopRightCorner,
+                       Qt.DockWidgetArea.TopDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, title_dock)
+
+        # The find bar and timeline live in a LOCKED, chromeless dock
+        # spanning the window's full bottom.  With both bottom corners
+        # assigned to the bottom area, the side panels (Outline, Doc
+        # Info, Library Info, Library list) END where the notes end —
+        # every lower border on one line (Aug 2026 request).
+        bottom_host = QWidget(self)
+        bottom_col = QVBoxLayout(bottom_host)
+        bottom_col.setContentsMargins(0, 0, 0, 0)
+        bottom_col.setSpacing(0)
+        bottom_col.addWidget(self._find_bar)
+        bottom_col.addWidget(self._timeline)
+        bottom_dock = QDockWidget("", self)
+        bottom_dock.setObjectName("TimelineDock")   # saveState needs it
+        bottom_dock.setWidget(bottom_host)
+        bottom_dock.setTitleBarWidget(QWidget(bottom_dock))  # no chrome
+        bottom_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        self.setCorner(Qt.Corner.BottomLeftCorner,
+                       Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.setCorner(Qt.Corner.BottomRightCorner,
+                       Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                           bottom_dock)
 
     # ------------------------------------------ notes anchored to the text --
 
@@ -459,26 +532,48 @@ class MainWindow(QMainWindow):
 
     def _build_side_panels(self) -> None:
         """Stage 7 docks: outline (left, under the library) and info panel
-        (right).  Both closable — View menu brings them back."""
+        (right).  Both closable — View menu brings them back.
+
+        Each panel sits in a thin ROUNDED frame (Aug 2026 request),
+        made by wrapping it in a small margined host so the rounded
+        corners have room to show against the dock's edges."""
+
+        def framed(panel, name: str) -> QWidget:
+            """A host that draws a rounded hairline around `panel`."""
+            host = QWidget(self)
+            host.setObjectName(name)
+            box = QVBoxLayout(host)
+            box.setContentsMargins(3, 3, 3, 3)
+            box.addWidget(panel)
+            panel.setObjectName(name + "Inner")
+            # The frame lives on the INNER widget (list/tree/panel), so
+            # scrollbars and content clip inside the rounded line.
+            panel.setStyleSheet(
+                f"#{name}Inner {{ border: 1px solid #b9c4d0;"
+                f" border-radius: 6px; }}")
+            panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            return host
+
         self._outline = OutlinePane(self)
         self._outline.heading_activated.connect(self._on_heading_activated)
         self._outline_dock = QDockWidget("Outline", self)
         self._outline_dock.setObjectName("OutlineDock")
-        self._outline_dock.setWidget(self._outline)
+        self._outline_dock.setWidget(framed(self._outline, "OutlineFrame"))
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._outline_dock)
 
         self._info_panel = InfoPanel(self)
         self._info_panel.edit_tags_requested.connect(self._on_edit_tags)
         self._info_dock = QDockWidget("Document Info", self)
         self._info_dock.setObjectName("DocInfoDock")
-        self._info_dock.setWidget(self._info_panel)
+        self._info_dock.setWidget(framed(self._info_panel, "DocInfoFrame"))
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._info_dock)
 
         # Library-wide facts, below the document panel.
         self._library_panel = LibraryInfoPanel(self)
         self._library_dock = QDockWidget("Library Info", self)
         self._library_dock.setObjectName("LibraryInfoDock")
-        self._library_dock.setWidget(self._library_panel)
+        self._library_dock.setWidget(
+            framed(self._library_panel, "LibraryInfoFrame"))
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                            self._library_dock)
         self._refresh_library_info()
@@ -921,6 +1016,8 @@ class MainWindow(QMainWindow):
             recent_limit=self._recent_limit(),
             reopen_last=self._settings.value("reopen_last", True, type=bool),
             font_family=self._editor.font().family(),
+            notes_family=self._notes.font().family(),
+            notes_size=self._notes.font().pointSize(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -932,6 +1029,9 @@ class MainWindow(QMainWindow):
         self._settings.setValue("idle_ms", dialog.idle_seconds * 1000)
         self._settings.setValue("font_pt", dialog.font_size)
         self._settings.setValue("font_family", dialog.font_family)
+        self._settings.setValue("notes_font_family", dialog.notes_family)
+        self._settings.setValue("notes_font_pt", dialog.notes_size)
+        self._apply_notes_font()
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
         self._settings.setValue("reopen_last", dialog.reopen_last)
@@ -1036,30 +1136,15 @@ class MainWindow(QMainWindow):
             self._read_btn.setText("🔊 Read")
 
     def _build_status_bar(self) -> None:
-        """Three permanent labels: document/revisions, words, last save.
-        Plus the Read Aloud button — the ear's way into the text."""
-        from PyQt6.QtWidgets import QPushButton
-
-        self._doc_label = QLabel("No document open")
-        self._words_label = QLabel("")
-        self._saved_label = QLabel("")
-        self._read_btn = QPushButton("🔊 Read")
-        self._read_btn.setToolTip(
-            "Read aloud from the cursor (or the selection) in a "
-            "digital voice — click again to stop (Ctrl+Shift+R)"
-        )
-        self._read_btn.setFlat(True)
-        # NoFocus is essential: a focus-taking button steals the caret
-        # from the editor at the very moment the reading position
-        # matters, and the focus change jolted the view ("it jumps to
-        # the beginning", Aug 2026).  The editor keeps cursor and
-        # focus; the button is just a lever.
-        self._read_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._read_btn.clicked.connect(self._on_read_aloud)
-        self.statusBar().addWidget(self._doc_label, stretch=1)
-        self.statusBar().addPermanentWidget(self._read_btn)
-        self.statusBar().addPermanentWidget(self._words_label)
-        self.statusBar().addPermanentWidget(self._saved_label)
+        """The status bar carries only TRANSIENT messages now — the
+        permanent document/revision/word-count labels were retired
+        (Aug 2026): every fact they showed lives in the Document Info
+        panel and the title header, and one line of screen is worth
+        more than saying things twice.  Read Aloud's button lives on
+        the timeline bar (right of Restore); its voice lives here."""
+        self._read_btn = self._timeline.read_btn
+        self._timeline.read_requested.connect(self._on_read_aloud)
+        self.statusBar()   # created empty, ready for showMessage()
 
     # -------------------------------------------------------------- library --
 
@@ -1650,15 +1735,62 @@ class MainWindow(QMainWindow):
                      else min(pos, bar.maximum()))
 
     def _apply_font_family(self, family: str) -> None:
-        """Dress the editor AND the notes pane in the chosen typeface
-        (the notes stay one point smaller, as always).  Empty family =
-        the platform default, untouched."""
+        """Dress the editor in the chosen typeface; the notes pane
+        follows UNLESS it has its own setting (_apply_notes_font runs
+        after this and overrides).  Empty family = platform default."""
         if not family:
             return
         self._editor.set_font_family(family)
         notes_font = self._notes.font()
         notes_font.setFamily(family)
         self._notes.setFont(notes_font)
+
+    def _apply_notes_font(self) -> None:
+        """The notes pane's OWN typeface and size (Settings knobs,
+        Aug 2026).  Unset values leave the follow-the-editor defaults
+        alone, so nothing changes until a choice is made."""
+        family = str(self._settings.value("notes_font_family", ""))
+        try:
+            size = int(self._settings.value("notes_font_pt", 0))
+        except (TypeError, ValueError):
+            size = 0
+        font = self._notes.font()
+        if family:
+            font.setFamily(family)
+        if size:
+            font.setPointSize(max(7, min(24, size)))
+        self._notes.setFont(font)
+
+    def _on_notes_context_menu(self, pos) -> None:
+        """Right-click in the notes: the standard menu, topped with
+        spelling suggestions — the same courtesy the editor extends."""
+        from wordvault.editor.spelling import get_spelling
+
+        menu = self._notes.createStandardContextMenu()
+        spelling = get_spelling()
+        if spelling.is_available() and self._notes_highlighter.spelling_enabled:
+            from PyQt6.QtGui import QTextCursor
+
+            cursor = self._notes.cursorForPosition(pos)
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            word = cursor.selectedText()
+            if word and spelling.is_misspelled(word):
+                first = menu.actions()[0] if menu.actions() else None
+                for suggestion in spelling.suggestions(word):
+                    action = menu.addAction(suggestion)
+                    menu.insertAction(first, action)
+                    action.triggered.connect(
+                        lambda _c, s=suggestion, cur=cursor: cur.insertText(s))
+                add_action = menu.addAction(f"Add “{word}” to dictionary")
+                menu.insertAction(first, add_action)
+                add_action.triggered.connect(
+                    lambda _c, w=word: (
+                        spelling.add_to_dictionary(w),
+                        self._notes_highlighter.rehighlight(),
+                        self._editor.markdown_highlighter.rehighlight(),
+                    ))
+                menu.insertSeparator(first)
+        menu.exec(self._notes.viewport().mapToGlobal(pos))
 
     def _set_edit_mode_visuals(self, live: bool) -> None:
         """Repaint the editor's mode border (see the stylesheet where
@@ -1677,7 +1809,8 @@ class MainWindow(QMainWindow):
         self._store.save_revision(
             self._current_doc.id, self._editor.toPlainText(), origin="restore"
         )
-        self._saved_label.setText("restored " + datetime.now().strftime("%H:%M:%S"))
+        self.statusBar().showMessage(
+            "Restored — the old state is now the newest draft.", 5000)
         self._go_live()
 
     def _on_import_folder(self) -> None:
@@ -1930,6 +2063,8 @@ class MainWindow(QMainWindow):
             return
         self._editor.markdown_highlighter.spelling_enabled = on
         self._editor.markdown_highlighter.rehighlight()
+        self._notes_highlighter.spelling_enabled = on   # notes follow
+        self._notes_highlighter.rehighlight()
         self._settings.setValue("spelling", on)
 
     # ------------------------------------------- spelling-habits watcher ---
@@ -2327,6 +2462,44 @@ class MainWindow(QMainWindow):
     def _on_unfocus(self) -> None:
         self._editor.clear_focus_lines()
 
+    # ------------------------------------------------- the editing clock --
+
+    def _on_edit_activity(self) -> None:
+        """One genuine keystroke: extend the writing clock.  Gaps up
+        to EDIT_GAP_SECONDS between keystrokes count as writing (the
+        pauses in which sentences are composed); longer gaps count as
+        absence and add nothing.  So the clock measures the time your
+        hands and mind were actually on THIS document — never the
+        hours it merely sat open."""
+        import time
+
+        if self._current_doc is None or not self._is_live:
+            return
+        now = time.monotonic()
+        if self._edit_clock_doc != self._current_doc.id:
+            self._flush_edit_clock()          # credit the previous doc
+            self._edit_clock_doc = self._current_doc.id
+            self._edit_last_monotonic = now
+            return
+        if self._edit_last_monotonic is not None:
+            gap = now - self._edit_last_monotonic
+            if gap <= EDIT_GAP_SECONDS:
+                self._edit_pending += gap
+        self._edit_last_monotonic = now
+
+    def _flush_edit_clock(self) -> None:
+        """Bank the pending seconds into the vault (on autosave,
+        document switch, and close — cheap and often).  Only the
+        pending count resets: the session itself continues, so a flush
+        in mid-writing costs the clock nothing."""
+        if self._edit_clock_doc is not None and self._edit_pending >= 1.0:
+            try:
+                self._store.add_editing_seconds(
+                    self._edit_clock_doc, int(self._edit_pending))
+            except KeyError:
+                pass                       # the document left the vault
+            self._edit_pending = 0.0
+
     def _refresh_info(self) -> None:
         """Push document-level facts into the info panel."""
         if self._current_doc is None:
@@ -2345,6 +2518,11 @@ class MainWindow(QMainWindow):
             _local_time(self._revisions[-1].created_utc)
             if self._revisions else "never"
         )
+        # The editing clock: banked seconds plus the unbanked pending
+        # ones from the session in progress.
+        edit_seconds = self._store.editing_seconds(doc.id)
+        if self._edit_clock_doc == doc.id:
+            edit_seconds += int(self._edit_pending)
         self._info_panel.update_info(
             title=doc.title,
             chain_text=chain_text,
@@ -2354,6 +2532,7 @@ class MainWindow(QMainWindow):
             word_count=len(self._editor.toPlainText().split()),
             tags=[t.name for t in self._store.tags_for(doc.id)],
             verse_count=len(self._store.verses_for(doc.id)),
+            editing_time=_format_edit_time(edit_seconds),
         )
 
     def _refresh_position(self) -> None:
@@ -2686,8 +2865,8 @@ class MainWindow(QMainWindow):
             self._current_doc.id, new_text, origin="typing"
         )
         self._editor.stop_idle_timer()  # a pending pause-save is now redundant
-        if rev is not None:
-            self._saved_label.setText("saved " + datetime.now().strftime("%H:%M:%S"))
+        # (No "saved HH:MM" label anymore: the title header's draft
+        # count and date advance on every save — confirmation enough.)
         return rev
 
     def _autosave(self) -> None:
@@ -2697,6 +2876,7 @@ class MainWindow(QMainWindow):
         if self._current_doc is None or not self._is_live:
             return
         self._save_current_note()    # notes ride along with every save
+        self._flush_edit_clock()     # writing time banks with the words
         if self._commit_live_text() is not None:
             # History grew: extend the slider, staying parked at the end.
             self._revisions = self._store.list_revisions(self._current_doc.id)
@@ -2718,6 +2898,7 @@ class MainWindow(QMainWindow):
         try:
             self._autosave()
             self._save_current_note()   # history mode skips _autosave
+            self._flush_edit_clock()    # the last minutes are banked too
             self._save_window_state()   # layout survives the restart
             self._store.close()
         except Exception as exc:  # never trap the user in a broken window
@@ -2739,24 +2920,8 @@ class MainWindow(QMainWindow):
             self._title_label.setText("No document open")
 
     def _update_status(self) -> None:
-        """Refresh the status-bar labels from current state."""
-        if self._current_doc is None:
-            self._doc_label.setText("No document open — File ▸ New Document")
-            self._words_label.setText("")
-            return
-
-        rev_count = len(self._revisions)
-        if self._is_live:
-            self._doc_label.setText(
-                f"{self._current_doc.title}  ·  {rev_count} revision"
-                + ("s" if rev_count != 1 else "")
-            )
-        else:
-            # Position is 1-based for humans: "revision 3 of 7".
-            pos = self._timeline.position() + 1
-            self._doc_label.setText(
-                f"{self._current_doc.title}  ·  viewing revision "
-                f"{pos} of {rev_count} (read-only — Restore to bring it back)"
-            )
-        text = self._editor.toPlainText()
-        self._words_label.setText(f"{len(text.split())} words")
+        """Once the writer of three status-bar labels; now a quiet
+        no-op kept so its many call sites need no changes.  Everything
+        it used to say — title, draft count, viewing position, word
+        count — lives in the title header and the Document Info panel
+        (the redundancy was retired Aug 2026)."""

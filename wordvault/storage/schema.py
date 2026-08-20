@@ -40,6 +40,15 @@ CREATE TABLE IF NOT EXISTS documents (
     trashed_utc    TEXT              -- set = in the wastebasket (never destroyed)
 );
 
+-- Actual WRITING time per document, in seconds.  Only active editing
+-- counts: the editor credits keystroke-to-keystroke gaps up to a
+-- thought's length and ignores longer ones, so an essay left open
+-- overnight gains nothing (Aug 2026).
+CREATE TABLE IF NOT EXISTS editing_time (
+    doc_id  INTEGER PRIMARY KEY REFERENCES documents(id),
+    seconds INTEGER NOT NULL DEFAULT 0
+);
+
 -- Append-only history.  Rows are never updated or deleted.
 CREATE TABLE IF NOT EXISTS revisions (
     id            INTEGER PRIMARY KEY,

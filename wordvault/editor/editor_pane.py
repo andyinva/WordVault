@@ -54,6 +54,10 @@ class EditorPane(QPlainTextEdit):
     #: automatically as the author typed the same mistake again.
     autocorrected = pyqtSignal(str, str)
 
+    #: A GENUINE edit happened (never fired by set_text_quietly's
+    #: document loads) — the editing clock listens to this.
+    user_edited = pyqtSignal()
+
 
     #: How long a silence counts as "a pause" (DESIGN.md: ~3 seconds).
     IDLE_MS = 3000
@@ -433,9 +437,11 @@ class EditorPane(QPlainTextEdit):
     # -- internals ----------------------------------------------------------
 
     def _on_text_changed(self) -> None:
-        """Every genuine edit restarts the idle countdown."""
+        """Every genuine edit restarts the idle countdown — and tells
+        the editing clock a keystroke of real writing happened."""
         if not self._suppress_signals:
             self._idle_timer.start()
+            self.user_edited.emit()
 
     @staticmethod
     def _on_windows() -> bool:

@@ -181,6 +181,30 @@ class DocumentStore:
         ).fetchall()
         return [self._doc_from_row(r) for r in rows]
 
+    # -- the editing clock ---------------------------------------------------
+
+    def add_editing_seconds(self, doc_id: int, seconds: int) -> None:
+        """Credit `seconds` of ACTIVE writing time to a document (the
+        editor batches and flushes these; see MainWindow's edit clock).
+        Append-only in spirit: the total only ever grows."""
+        if seconds <= 0:
+            return
+        self.get_document(doc_id)  # existence check
+        self._conn.execute(
+            "INSERT INTO editing_time (doc_id, seconds) VALUES (?, ?) "
+            "ON CONFLICT(doc_id) DO UPDATE SET "
+            "seconds = seconds + excluded.seconds",
+            (doc_id, int(seconds)),
+        )
+        self._conn.commit()
+
+    def editing_seconds(self, doc_id: int) -> int:
+        """Total active writing time recorded for a document."""
+        row = self._conn.execute(
+            "SELECT seconds FROM editing_time WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        return int(row["seconds"]) if row else 0
+
     # -- the wastebasket (deletion as banishment, never destruction) --------
 
     def trash_document(self, doc_id: int) -> None:

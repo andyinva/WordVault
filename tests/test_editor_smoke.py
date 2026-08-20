@@ -365,6 +365,78 @@ def test_trash_document_from_menu(qapp, tmp_path, monkeypatch):
     window.close()
 
 
+def test_notes_spelling_follows_toggle_and_font_applies(qapp, tmp_path):
+    """The notes pane checks spelling with the same View toggle as the
+    editor, and wears its own Settings font."""
+    window = MainWindow(tmp_path / "notesfont.db")
+    doc = window._store.create_document("N")
+    window._store.save_revision(doc.id, "text\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+
+    # The toggle drives BOTH highlighters (when pyspellchecker exists,
+    # the action stays checked; without it, both stay off — either
+    # way they agree).
+    window._spelling_action.setChecked(True)
+    assert (window._notes_highlighter.spelling_enabled
+            == window._editor.markdown_highlighter.spelling_enabled)
+    window._spelling_action.setChecked(False)
+    assert window._notes_highlighter.spelling_enabled is False
+
+    # The notes font knobs apply on demand.
+    window._settings.setValue("notes_font_pt", 14)
+    window._apply_notes_font()
+    assert window._notes.font().pointSize() == 14
+    window._settings.remove("notes_font_pt")     # tidy the registry
+    window.close()
+
+
+def test_editing_clock_counts_writing_not_open_time(qapp, tmp_path):
+    """The editing clock (Aug 2026): keystroke-to-keystroke gaps up to
+    a minute count as writing; longer gaps count as absence; flushing
+    banks the seconds into the vault under the right document."""
+    from wordvault.editor.main_window import _format_edit_time
+
+    window = MainWindow(tmp_path / "clock.db")
+    doc = window._store.create_document("Timed")
+    window._store.save_revision(doc.id, "start\n")
+    window._reload_document_list()
+    window._open_document(doc.id)
+
+    # First keystroke: starts the session, credits nothing yet.
+    window._on_edit_activity()
+    assert window._edit_clock_doc == doc.id
+    assert window._edit_pending == 0.0
+
+    # Five seconds of composing between keystrokes: counted.
+    window._edit_last_monotonic -= 5.0
+    window._on_edit_activity()
+    assert 4.5 <= window._edit_pending <= 5.5
+
+    # A twenty-minute absence: NOT counted (open time is not writing).
+    window._edit_last_monotonic -= 1200.0
+    window._on_edit_activity()
+    assert window._edit_pending <= 5.5
+
+    window._flush_edit_clock()
+    banked = window._store.editing_seconds(doc.id)
+    assert 4 <= banked <= 6
+    assert window._edit_pending == 0.0
+    # Flushing mid-session does not end the session.
+    assert window._edit_clock_doc == doc.id
+
+    # Genuine typing drives the clock through the editor signal too.
+    window._editor.insertPlainText("x")
+    assert window._edit_clock_doc == doc.id
+
+    # And the human phrasing behaves.
+    assert _format_edit_time(0) == "none yet"
+    assert _format_edit_time(30) == "under a minute"
+    assert _format_edit_time(150) == "2 min"
+    assert _format_edit_time(7500) == "2 h 5 min"
+    window.close()
+
+
 def test_delete_selection_leaves_clipboard_alone(qapp, tmp_path):
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtWidgets import QApplication

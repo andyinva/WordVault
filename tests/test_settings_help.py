@@ -188,6 +188,19 @@ def test_font_family_choice(qapp):
     assert dlg2.font_family == remembered
 
 
+def test_notes_font_knobs(qapp):
+    """The notes pane's own typeface and size in Settings."""
+    dlg = _dialog(qapp)
+    assert dlg.notes_size == 10                  # the shipped default
+    dlg._notes_size_spin.setValue(12)
+    assert dlg.notes_size == 12
+    assert isinstance(dlg.notes_family, str)     # a name, even fontless
+
+    dlg2 = SettingsDialog(None, encrypted=False, idle_seconds=3,
+                          font_size=12, notes_size=14)
+    assert dlg2.notes_size == 14
+
+
 def test_recent_limit_default_and_change(qapp):
     """The 'Recent list remembers' knob: defaults to 25, changeable,
     and the spin box clamps out-of-range values."""

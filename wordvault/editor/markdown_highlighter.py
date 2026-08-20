@@ -37,6 +37,20 @@ _RE_BOLD = re.compile(r"\*\*(?!\s|\*)(.+?)(?<!\s)\*\*")
 _RE_ITALIC = re.compile(r"(?<!\*)\*(?!\s|\*)([^*]+?)(?<!\s)\*(?!\*)")
 
 
+class SpellingHighlighter(QSyntaxHighlighter):
+    """Spelling underlines ONLY — for the notes pane, where Markdown
+    conventions do not apply but misspellings still deserve their red
+    squiggle.  Shares the editor's dictionary and its View toggle."""
+
+    def __init__(self, document):
+        super().__init__(document)
+        self.spelling_enabled = False
+
+    def highlightBlock(self, text: str) -> None:  # noqa: N802 (Qt naming)
+        # Borrow the misspelling walker below (same rules everywhere).
+        MarkdownHighlighter._underline_misspellings(self, text)
+
+
 class MarkdownHighlighter(QSyntaxHighlighter):
     """Styles Markdown conventions; never changes a single character."""
 

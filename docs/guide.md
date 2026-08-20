@@ -174,7 +174,13 @@ its old line number.
   fresh.
 - **View ▸ Line Numbers** — a classic gutter, for when notes say
   "line 143".
-- **Document Info panel** — dates, drafts, word count, your position.
+- **Document Info panel** — dates, drafts, word count, your position,
+  and **Time writing**: the actual hours your hands were on this
+  document. Only active writing counts — pauses up to a minute
+  between keystrokes are the thinking inside sentences and count;
+  longer gaps mean you were away and add nothing. An essay left open
+  overnight gains not a second. The clock banks with every autosave
+  and only ever grows.
 
 ### Hearing your writing
 
@@ -190,7 +196,9 @@ stumbles. (On Ubuntu this needs the standard speech system:
 
 ### Spelling, and your habits
 
-**View ▸ Check Spelling** underlines doubtful words; right-click for
+**View ▸ Check Spelling** underlines doubtful words — in the text
+*and in the notes pane*, which shares the same dictionary and offers
+the same right-click suggestions; right-click for
 suggestions or *Add to dictionary* (the dictionary is seeded with the
 names of the books of the Bible). WordVault also *watches how you
 fix things*: every correction is classified (vowel swap, dropped
@@ -497,7 +505,9 @@ alternating correctly straight through.
 `{author}` in print formats), **auto-save pause**, the **editor font**
 (any font installed on this system — display only, since printed
 pages take their fonts from .wvfmt files; a family the other platform
-lacks falls back to its nearest look-alike) and its **size**, how far
+lacks falls back to its nearest look-alike) and its **size**, the
+**notes pane's own font and size** (marginalia may suit a smaller,
+plainer face), how far
 back **File ▸ Recent** remembers (25 unless you say
 otherwise), whether WordVault **reopens the last document at
 startup** (on by default), and **library encryption**.

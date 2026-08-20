@@ -31,6 +31,9 @@ class TimelineBar(QWidget):
     position_changed = pyqtSignal(int)
     #: Emitted when the user clicks "Restore this version".
     restore_requested = pyqtSignal()
+    #: Emitted when the user clicks the Read Aloud button (which lives
+    #: here, at the bar's right end — MainWindow owns the voice).
+    read_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +68,17 @@ class TimelineBar(QWidget):
         self._fwd_btn.setToolTip("Forward one revision (Alt+Right)")
         self._fwd_btn.clicked.connect(lambda: self.step(+1))
 
+        # Read Aloud sits at the bar's right end.  NoFocus is essential:
+        # a focus-taking button steals the caret from the editor at the
+        # very moment the reading position matters (the "jumps to the
+        # beginning" lesson, Aug 2026).
+        self.read_btn = QPushButton("🔊 Read", self)
+        self.read_btn.setToolTip(
+            "Read aloud from the cursor (or the selection) in a digital "
+            "voice — click again to stop (Ctrl+Shift+R)")
+        self.read_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.read_btn.clicked.connect(self.read_requested)
+
         layout.addWidget(QLabel("History:", self))
         layout.addWidget(self._back_btn)
         layout.addWidget(self._slider, stretch=1)
@@ -72,6 +86,7 @@ class TimelineBar(QWidget):
         layout.addWidget(self._info)
         layout.addWidget(self._newest_btn)
         layout.addWidget(self._restore_btn)
+        layout.addWidget(self.read_btn)
 
         # While set_range() adjusts the slider programmatically we must not
         # re-broadcast the change as if the user dragged it.
