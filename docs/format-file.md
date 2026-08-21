@@ -34,6 +34,10 @@ name = "Essay"                    # shown in the print chooser
 size = "Letter"                   # Letter | Legal | A4 | A5 | B5 | 6x9
                                   # ("6x9" is the Amazon KDP paperback
                                   #  trim, 6 x 9 inches)
+duplex = true                     # optional: the format itself asks the
+                                  # printer for two-sided (long-edge
+                                  # flip); printers without duplex
+                                  # ignore it, PDFs are unaffected
 margins_mm = [25, 20, 25, 20]     # shorthand: top, right, bottom, left, mm
 
 # OR the full Word-style margins table (either one, not both):

@@ -845,6 +845,28 @@ class DocumentStore:
         return ([(r["kind"], r["n"]) for r in kinds],
                 [(r["t"], r["c"], r["n"]) for r in pairs])
 
+    def spelling_pairs(self) -> list[tuple[str, str, int]]:
+        """EVERY distinct typed->corrected pair ever logged, with
+        counts — fuel for history-first spelling suggestions (unlike
+        spelling_summary, which shows only the leaders)."""
+        rows = self._conn.execute(
+            "SELECT lower(typed) t, lower(corrected) c, COUNT(*) n "
+            "FROM spelling_log GROUP BY t, c ORDER BY n DESC"
+        ).fetchall()
+        return [(r["t"], r["c"], r["n"]) for r in rows]
+
+    def spelling_matches(self, word: str) -> list[tuple[str, str, int]]:
+        """Every logged pair touching `word` on either side — the
+        dictionary dialog's 'have I stumbled here before?' answer."""
+        key = word.lower().strip()
+        rows = self._conn.execute(
+            "SELECT lower(typed) t, lower(corrected) c, COUNT(*) n "
+            "FROM spelling_log WHERE lower(typed) = ? "
+            "OR lower(corrected) = ? GROUP BY t, c ORDER BY n DESC",
+            (key, key),
+        ).fetchall()
+        return [(r["t"], r["c"], r["n"]) for r in rows]
+
     # -- gather tray (DESIGN.md section 8: mark and gather) ------------------
 
     def add_gather_item(

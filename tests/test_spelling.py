@@ -7,12 +7,74 @@ import pytest
 
 pytest.importorskip("spellchecker")
 
-from wordvault.editor.spelling import Spelling  # noqa: E402
+from wordvault.editor.spelling import Spelling, skeleton  # noqa: E402
 
 
 @pytest.fixture(scope="module")
 def spelling():
     return Spelling()   # loads the dictionary once for the whole module
+
+
+def test_skeleton_survives_phonetic_misspelling():
+    """The jeopardizing incident (Aug 2026): three phonetic tries,
+    all sharing one consonant skeleton with the intended word."""
+    target = skeleton("jeopardizing")
+    for attempt in ("jeprodising", "jeoprodising", "jeoprodizing"):
+        assert skeleton(attempt) == target, attempt
+    # And unrelated words do NOT collapse together.
+    assert skeleton("kingdom") != skeleton("jeopardizing")
+    assert skeleton("separate") == skeleton("seperate")   # his classic
+
+
+def test_sound_alike_suggestions_reach_far_words(spelling):
+    """'jeprodising' is too many edits from 'jeopardizing' for the
+    classic search — the skeleton index must carry it home."""
+    for attempt in ("jeprodising", "jeoprodising", "jeoprodizing"):
+        assert "jeopardizing" in spelling.suggestions(attempt), attempt
+
+
+def test_common_misspellings_are_known_in_advance(spelling):
+    """The second well: ~2,600 classic English misspellings bundled
+    (Wikipedia via MIT-licensed myint/misspellings), answering before
+    the search engines do."""
+    common = spelling.common_misspellings()
+    assert len(common) > 2000
+    assert common["recieve"] == "receive"
+    assert common["seperate"] == "separate"
+    assert common["teh"] == "the"
+    # With no personal history, the classic answer leads outright.
+    assert spelling.suggestions("recieve")[0] == "receive"
+    assert spelling.suggestions("Definately")[0] == "Definitely"
+
+
+def test_history_correction_leads_the_list(spelling):
+    spelling.set_history({"jeprodising": ("jeopardizing", 3)})
+    try:
+        assert spelling.suggestions("jeprodising")[0] == "jeopardizing"
+        # Capitalization mirrors, history included.
+        assert spelling.suggestions("Jeprodising")[0] == "Jeopardizing"
+    finally:
+        spelling.set_history({})
+
+
+def test_prefix_matches_reach_the_standard_dictionary(spelling):
+    """Typing 'jeo' must surface jeopardy's family, not just personal
+    words (the Jeremiah-but-not-Jeopardy gap, Aug 2026)."""
+    words = spelling.prefix_matches("jeo")
+    assert "jeopardy" in words
+    assert all(w.startswith("jeo") for w in words)
+    # Common words rank ahead of rare ones.
+    many = spelling.prefix_matches("kin")
+    assert many.index("kind") < many.index("kinsman")
+    assert spelling.prefix_matches("") == []
+
+
+def test_dictionary_dialog_questions(spelling):
+    assert spelling.is_standard("kingdom")
+    assert not spelling.is_standard("jeprodising")
+    # Bible book seeds are personal words, visible in the listing.
+    assert spelling.is_personal("Habakkuk") or "habakkuk" in \
+        spelling.personal_words()
 
 
 def test_common_words_pass(spelling):

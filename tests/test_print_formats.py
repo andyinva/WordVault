@@ -137,6 +137,35 @@ def test_furniture_and_byline_parse(tmp_path):
     assert fmt.needs_manual_pagination()
 
 
+def test_duplex_key(tmp_path):
+    """[page] duplex: the format itself asks for two-sided printing;
+    absent = false; non-boolean = a named error."""
+    fmt = load_format(write(tmp_path, "[page]\nduplex = true\n", "d.wvfmt"))
+    assert fmt.duplex is True
+    assert load_format(write(tmp_path, GOOD)).duplex is False
+    with pytest.raises(FormatError, match="duplex must be"):
+        load_format(write(tmp_path, "[page]\nduplex = 'yes'\n", "db.wvfmt"))
+
+
+def test_essay_draft_ships_and_saves_paper(tmp_path, monkeypatch):
+    """The Essay Draft master: half-inch margins, 10pt body, duplex,
+    heading sizes descending 13/12/11 (the user's 11/12 transposition
+    corrected by agreement, Aug 2026)."""
+    monkeypatch.setattr(ff, "FORMATS_DIR", tmp_path / "formats")
+    ensure_default_formats()
+    draft = next(f for f in list_formats() if f.name == "Essay Draft")
+    fmt = load_format(draft.path)
+    assert fmt.duplex is True
+    assert fmt.margins.for_page(0) == tuple(pytest.approx(0.5 * 25.4)
+                                            for _ in range(4))
+    assert fmt.body.size_pt == 10
+    h1, h2, h3 = (fmt.style_for_heading(n) for n in (1, 2, 3))
+    assert (h1.size_pt, h2.size_pt, h3.size_pt) == (13, 12, 11)
+    assert h1.bold and h2.bold and h3.bold
+    assert fmt.footer.center == "{page} of {pages}"
+    assert fmt.needs_manual_pagination()      # furniture drives it
+
+
 def test_6x9_kdp_trim_size_accepted(tmp_path):
     fmt = load_format(write(
         tmp_path, "[page]\nsize = '6x9'\n", "kdp.wvfmt"))

@@ -82,6 +82,31 @@ def test_wastebasket_column_migrates_old_libraries(tmp_path):
     store.close()
 
 
+def test_spelling_pairs_and_matches(store):
+    doc = store.create_document("S")
+    store.save_revision(doc.id, "text\n")
+    for _ in range(2):
+        store.log_spelling_fix(doc.id, "jeprodising", "jeopardizing",
+                               "vowel swap", "suggestion")
+    store.log_spelling_fix(doc.id, "teh", "the", "swapped letters",
+                           "suggestion")
+
+    # Taught pairs belong to no document (doc_id None) — the dialog's
+    # 'Record as Misspelling of…' path.
+    store.log_spelling_fix(None, "jeprodising", "jeopardizing",
+                           "vowel swap", "taught")
+
+    pairs = store.spelling_pairs()
+    assert ("jeprodising", "jeopardizing", 3) in pairs
+    assert ("teh", "the", 1) in pairs
+    # Lookup touches BOTH sides of the pair.
+    assert store.spelling_matches("jeopardizing") == \
+        [("jeprodising", "jeopardizing", 3)]
+    assert store.spelling_matches("JEPRODISING") == \
+        [("jeprodising", "jeopardizing", 3)]
+    assert store.spelling_matches("kingdom") == []
+
+
 # -- documents --------------------------------------------------------------
 
 def test_create_and_get_document(store):

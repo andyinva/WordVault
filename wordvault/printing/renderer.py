@@ -257,6 +257,13 @@ def apply_page_setup(printer, fmt: PrintFormat) -> None:
         QPageLayout.Unit.Millimeter,
     )
     printer.setPageLayout(layout)
+    if fmt.duplex:
+        # The format asks for two-sided itself (long-edge flip, the
+        # book-like turn).  Printers without duplex simply ignore it;
+        # PDF output is unaffected.
+        from PyQt6.QtPrintSupport import QPrinter
+
+        printer.setDuplex(QPrinter.DuplexMode.DuplexLongSide)
 
 
 def _draw_furniture(painter, spec, variables, x_left: float, x_right: float,

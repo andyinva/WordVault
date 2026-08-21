@@ -1,0 +1,68 @@
+# Essay Draft - the paper-saver: half-inch margins, 10pt type, tight
+# spacing, and two-sided printing requested by the format itself.
+# Made for printing drafts to mark up, not for readers' eyes.
+# Heading sizes descend properly: 13 / 12 / 11, all bold.
+# Edit freely: this is YOUR copy (in ~/.wordvault/formats).
+# The full specification is in docs/format-file.md.
+
+[format]
+name = "Essay Draft"
+
+[page]
+size = "Letter"
+duplex = true                     # front and back, long-edge flip
+
+[page.margins]
+unit = "in"
+top = 0.5
+bottom = 0.5
+left = 0.5
+right = 0.5
+
+[body]
+font = "Georgia"
+size_pt = 10
+line_spacing = 1.1                # tight but still markable
+align = "left"                    # ragged right reads fine in drafts
+space_after_pt = 3
+
+[heading1]
+size_pt = 13
+bold = true
+space_before_pt = 10
+space_after_pt = 5
+
+[heading2]
+size_pt = 12
+bold = true
+space_before_pt = 8
+space_after_pt = 4
+
+[heading3]
+size_pt = 11
+bold = true
+space_before_pt = 6
+space_after_pt = 3
+
+[quote]
+italic = true
+indent_mm = 6
+size_pt = 9.5
+space_before_pt = 3
+space_after_pt = 3
+
+[list]
+indent_mm = 6
+space_after_pt = 1
+
+# Drafts pile up on desks: the header names which draft this page
+# belongs to, the footer numbers it.
+[header]
+left = "{title}"
+right = "{date}"
+size_pt = 8
+italic = true
+
+[footer]
+center = "{page} of {pages}"
+size_pt = 8

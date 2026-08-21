@@ -108,6 +108,39 @@ def _format_edit_time(total_seconds: int) -> str:
     return f"{minutes} min"
 
 
+def _dictionary_listing(needle: str, personal_words, history_pairs,
+                        completions) -> list[str]:
+    """The Spelling Dictionary's list, three sources in rank order:
+
+      ★ word                  the author's own dictionary (matched
+                              anywhere in the word)
+      typed → corrected (n×)  the author's ERROR HISTORY — a
+                              misspelling is a valid way to LOOK UP
+                              its word (Aug 2026: 'jeprodising' is
+                              how this author writes 'jeopardizing',
+                              so typing either side finds the pair)
+      word                    standard-dictionary completions,
+                              most common first
+    """
+    needle = needle.lower().strip()
+    rows: list[str] = []
+    shown: set[str] = set()
+    for word in personal_words:
+        if needle in word:
+            rows.append(f"★ {word}")
+            shown.add(word)
+    for typed, corrected, count in history_pairs:
+        if needle and (typed.startswith(needle)
+                       or corrected.startswith(needle)):
+            times = f"  ({count}×)" if count > 1 else ""
+            rows.append(f"{typed} → {corrected}{times}")
+            shown.add(corrected)
+    for word in completions:
+        if word not in shown:
+            rows.append(word)
+    return rows
+
+
 def _speakable_mapped(markdown_text: str, base: int = 0):
     """Markdown -> (spoken_text, positions): the words a voice should
     SAY — heading marks, quote and list markers, and emphasis
@@ -981,6 +1014,13 @@ class MainWindow(QMainWindow):
         )
         settings_action.triggered.connect(self._on_settings)
 
+        dictionary_action = QAction("Spelling &Dictionary…", self)
+        dictionary_action.setToolTip(
+            "Look a word up — is it known? have you misspelled it "
+            "before? — and add it to your dictionary"
+        )
+        dictionary_action.triggered.connect(self._on_spelling_dictionary)
+
         habits_action = QAction("My Spelling Ha&bits…", self)
         habits_action.setToolTip(
             "What kinds of spelling fixes you make — a running mirror"
@@ -994,6 +1034,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(share_action)
         help_menu.addAction(updates_action)
         help_menu.addSeparator()
+        help_menu.addAction(dictionary_action)
         help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
 
@@ -2225,13 +2266,166 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_autocorrect(self) -> None:
-        """Feed the editor the learned typo->fix pairs (or switch off)."""
+        """Feed the editor the learned typo->fix pairs (or switch off),
+        and hand the FULL error history to the suggestion engine — a
+        misspelling fixed even once leads its suggestion list ever
+        after, and every corrected-to word joins the sound-alike
+        index."""
         if self._autocorrect_action.isChecked():
             self._editor.set_autocorrect_lookup(
                 self._store.learned_corrections()
             )
         else:
             self._editor.set_autocorrect_lookup(None)
+        from wordvault.editor.spelling import get_spelling
+
+        history: dict[str, tuple[str, int]] = {}
+        for typed, corrected, count in self._store.spelling_pairs():
+            if typed not in history:      # rows arrive most-counted first
+                history[typed] = (corrected, count)
+        get_spelling().set_history(history)
+
+    def _on_spelling_dictionary(self) -> None:
+        """Help ▸ Spelling Dictionary: type a word and learn its whole
+        standing at once — known or not, yours or the dictionary's,
+        stumbled over before (and fixed to what), and what it might
+        BE if it is a misspelling (the sound-alike finder).  Unknown
+        words can be added on the spot."""
+        from PyQt6.QtWidgets import (
+            QDialog,
+            QHBoxLayout,
+            QLineEdit,
+            QListWidget,
+            QPushButton,
+            QVBoxLayout,
+        )
+
+        from wordvault.editor.spelling import get_spelling
+
+        spelling = get_spelling()
+        if not spelling.is_available():
+            QMessageBox.information(
+                self, "Spelling Dictionary",
+                "Spell checking needs the pyspellchecker package.\n"
+                "Install it with:  pip install pyspellchecker")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Spelling Dictionary")
+        dialog.resize(480, 520)
+        layout = QVBoxLayout(dialog)
+
+        entry = QLineEdit(dialog)
+        entry.setPlaceholderText("Type a word…")
+        layout.addWidget(entry)
+        verdict = QLabel("", dialog)
+        verdict.setWordWrap(True)
+        layout.addWidget(verdict)
+        add_btn = QPushButton("&Add to My Dictionary", dialog)
+        add_btn.setEnabled(False)
+        layout.addWidget(add_btn)
+        teach_btn = QPushButton("Record as &Misspelling of…", dialog)
+        teach_btn.setToolTip(
+            "Teach the pair directly: this word is YOUR spelling of a "
+            "real one.  It joins your history — findable in this list, "
+            "first in suggestions, and (repeated) auto-corrected."
+        )
+        teach_btn.setEnabled(False)
+        layout.addWidget(teach_btn)
+        layout.addWidget(QLabel("Matching words — ★ yours, your past "
+                                "fixes (typed → corrected), then the "
+                                "standard dictionary:", dialog))
+        listing = QListWidget(dialog)
+        layout.addWidget(listing, stretch=1)
+        close_btn = QPushButton("Close", dialog)
+        close_btn.clicked.connect(dialog.accept)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+
+        history_pairs = self._store.spelling_pairs()
+
+        def refill_list(needle: str = "") -> None:
+            """Three sources (see _dictionary_listing): your words,
+            your past fixes — a misspelling looks up its word, so
+            'jep' surfaces 'jeprodising → jeopardizing' — and the
+            standard dictionary's completions."""
+            listing.clear()
+            for row in _dictionary_listing(
+                    needle, spelling.personal_words(), history_pairs,
+                    spelling.prefix_matches(needle)):
+                listing.addItem(row)
+
+        def examine() -> None:
+            word = entry.text().strip()
+            add_btn.setEnabled(False)
+            teach_btn.setEnabled(False)
+            refill_list(word)
+            if not word:
+                verdict.setText("")
+                return
+            lines = []
+            if spelling.is_personal(word):
+                lines.append(f"“{word}” is in YOUR dictionary.")
+            elif spelling.is_standard(word):
+                lines.append(f"“{word}” is in the standard dictionary.")
+            else:
+                lines.append(f"“{word}” is not in any dictionary.")
+                add_btn.setEnabled(True)
+                teach_btn.setEnabled(True)
+                mates = spelling.suggestions(word)
+                if mates:
+                    lines.append("Did you mean: " + ", ".join(mates) + "?")
+            for typed, corrected, count in \
+                    self._store.spelling_matches(word):
+                times = f"{count}×" if count > 1 else "once"
+                lines.append(
+                    f"History: you typed “{typed}” and corrected it "
+                    f"to “{corrected}” ({times}).")
+            verdict.setText("\n".join(lines))
+
+        def add_word() -> None:
+            word = entry.text().strip()
+            if word:
+                spelling.add_to_dictionary(word)
+                self._editor.markdown_highlighter.rehighlight()
+                self._notes_highlighter.rehighlight()
+                examine()
+
+        def teach_pair() -> None:
+            """Record 'this word is my spelling of THAT one' by hand —
+            for pairs the live watcher never caught (a misspelling
+            retyped as another misspelling leaves no trail)."""
+            nonlocal history_pairs
+            from PyQt6.QtWidgets import QInputDialog
+
+            word = entry.text().strip().lower()
+            if not word:
+                return
+            mates = spelling.suggestions(word)
+            correct, ok = QInputDialog.getText(
+                dialog, "Record Misspelling",
+                f"“{word}” is your spelling of:",
+                text=mates[0].lower() if mates else "")
+            correct = correct.strip().lower()
+            if not ok or not correct or correct == word:
+                return
+            from wordvault.editor.spelling import classify_error
+
+            kind, detail = classify_error(word, correct)
+            self._store.log_spelling_fix(None, word, correct,
+                                         kind, detail or "taught")
+            history_pairs = self._store.spelling_pairs()
+            self._refresh_autocorrect()   # suggestions learn it at once
+            examine()
+
+        entry.textChanged.connect(examine)
+        add_btn.clicked.connect(add_word)
+        teach_btn.clicked.connect(teach_pair)
+        refill_list()
+        entry.setFocus()
+        dialog.exec()
 
     def _on_spelling_habits(self) -> None:
         """Help ▸ My Spelling Habits: the running mirror of error kinds."""

@@ -458,6 +458,30 @@ def test_delete_selection_leaves_clipboard_alone(qapp, tmp_path):
     window.close()
 
 
+def test_dictionary_listing_lets_errors_look_up_their_words():
+    """The Aug 2026 request in miniature: typing a misspelling (or
+    its start) surfaces 'typed → corrected' from the author's own
+    history — errors become index entries pointing at the truth."""
+    from wordvault.editor.main_window import _dictionary_listing
+
+    personal = ["habakkuk", "jeremiah"]
+    pairs = [("jeprodising", "jeopardizing", 3), ("teh", "the", 1)]
+    completions = ["jeopardy", "jeopardize"]
+
+    rows = _dictionary_listing("jep", personal, pairs, completions)
+    assert "jeprodising → jeopardizing  (3×)" in rows
+    # The CORRECT side works as a key too.
+    rows = _dictionary_listing("jeo", personal, pairs, completions)
+    assert any(r.startswith("jeprodising →") for r in rows)
+    # Personal words lead, marked; standard completions follow.
+    rows = _dictionary_listing("je", personal, pairs, completions)
+    assert rows[0] == "★ jeremiah"
+    assert "jeopardy" in rows
+    # Single-occurrence pairs show without a count.
+    rows = _dictionary_listing("teh", personal, pairs, [])
+    assert rows == ["teh → the"]
+
+
 def test_speakable_strips_typography():
     """Read Aloud must SAY words, not markup: 'kingdom', never
     'asterisk asterisk kingdom'."""

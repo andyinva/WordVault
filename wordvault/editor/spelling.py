@@ -40,6 +40,29 @@ def _seed_words() -> set[str]:
     return words
 
 
+def skeleton(word: str) -> str:
+    """A word's CONSONANT SKELETON — the bones that survive phonetic
+    misspelling.  Corpus analysis of this author's errors showed they
+    follow sound: vowels wobble, doubled letters collapse, s/z and
+    c/k trade places — but the consonant frame stays true.  So
+    'jeprodising', 'jeoprodising', and 'jeoprodizing' all reduce to
+    the same skeleton as 'jeopardizing' (jprtsng), and a skeleton
+    index finds the word ordinary edit-distance search cannot reach.
+
+    Reductions: lowercase; ph->f; c,q,ck->k; z,x->s; d->t (voicing
+    pairs); collapse doubles; keep the first letter, drop vowels
+    (a e i o u y) after it."""
+    w = word.lower()
+    w = w.replace("ph", "f").replace("ck", "k")
+    w = re.sub(r"[cq]", "k", w)
+    w = re.sub(r"[zx]", "s", w)
+    w = w.replace("d", "t")
+    w = re.sub(r"(.)\1+", r"\1", w)          # doubled letters collapse
+    if not w:
+        return ""
+    return w[0] + re.sub(r"[aeiouy]", "", w[1:])
+
+
 class Spelling:
     """Cached spell checking with a persistent user dictionary."""
 
@@ -51,6 +74,12 @@ class Spelling:
             self._spell = None
         self._cache: dict[str, bool] = {}     # word (lower) -> is known
         self._user_words: set[str] = set()
+        #: typed (lower) -> (corrected, times) — the author's own error
+        #: history, fed by MainWindow from the spelling log.  The best
+        #: clue of all: a word misspelled once is misspelled the same
+        #: way again, and its correction is already on record.
+        self._history: dict[str, tuple[str, int]] = {}
+        self._skeletons: dict[str, list] | None = None   # lazy index
 
         if self._spell is not None:
             self._user_words = _seed_words()
@@ -98,19 +127,140 @@ class Spelling:
 
     # -- fixing -------------------------------------------------------------
 
-    def suggestions(self, word: str, limit: int = 5) -> list[str]:
-        """Best replacement candidates, most likely first."""
+    def common_misspellings(self) -> dict[str, str]:
+        """typed -> corrected for ~2,600 CLASSIC English misspellings
+        (bundled from Wikipedia's community list via the MIT-licensed
+        myint/misspellings dataset — see wordvault/data/).  The second
+        well of suggestions: the author's own history answers first,
+        the collective history of English spellers answers next."""
+        if not hasattr(self, "_common"):
+            self._common = {}
+            data = (Path(__file__).resolve().parents[1]
+                    / "data" / "common_misspellings.txt")
+            try:
+                for line in data.read_text(encoding="utf-8").split("\n"):
+                    if line and not line.startswith("#") and "->" in line:
+                        typed, _, fix = line.partition("->")
+                        self._common[typed.strip()] = fix.strip()
+            except OSError:
+                pass          # a missing data file is not a failure
+        return self._common
+
+    def set_history(self, pairs: dict[str, tuple[str, int]]) -> None:
+        """Feed the author's typed->corrected history (from the
+        spelling log).  Invalidates the skeleton index so past
+        corrections join it."""
+        self._history = dict(pairs)
+        self._skeletons = None
+
+    def _skeleton_index(self) -> dict[str, list]:
+        """skeleton -> [(rank, word)] over the WHOLE known vocabulary:
+        the standard dictionary, the personal dictionary, and every
+        word the author has ever corrected TO.  Built lazily once
+        (a second's work, then instant) — this is what lets a
+        far-off phonetic misspelling find its word."""
+        if self._skeletons is not None:
+            return self._skeletons
+        index: dict[str, list] = {}
+
+        def put(word: str, rank: float) -> None:
+            index.setdefault(skeleton(word), []).append((rank, word))
+
+        frequencies = getattr(getattr(self._spell, "word_frequency", None),
+                              "dictionary", {}) or {}
+        for word, count in frequencies.items():
+            if len(word) > 2 and "'" not in word:
+                put(word, float(count))
+        boost = (max(frequencies.values()) if frequencies else 1.0) * 10
+        for word in self._user_words:
+            put(word, boost)                  # the author's words outrank
+        for corrected, _n in self._history.values():
+            put(corrected.lower(), boost * 2)  # proven corrections most
+        for mates in index.values():
+            mates.sort(reverse=True)
+        self._skeletons = index
+        return index
+
+    def suggestions(self, word: str, limit: int = 6) -> list[str]:
+        """Best replacement candidates, most likely first — drawing on
+        three wells, strongest first:
+
+        1. the author's OWN history: this exact misspelling was fixed
+           before, so its correction leads;
+        2. sound-alikes: words sharing the consonant skeleton — how
+           'jeprodising' finds 'jeopardizing' though it is too many
+           edits away for ordinary suggestion search (Aug 2026);
+        3. the classic edit-distance candidates, frequency-ranked.
+        """
         if self._spell is None:
             return []
-        candidates = self._spell.candidates(word.lower()) or set()
-        ranked = sorted(
-            candidates,
-            key=lambda w: self._spell.word_usage_frequency(w), reverse=True,
-        )[:limit]
+        key = word.lower().strip("'")
+        ordered: list[str] = []
+
+        past = self._history.get(key)
+        if past:
+            ordered.append(past[0].lower())
+
+        common = self.common_misspellings().get(key)
+        if common and common not in ordered:
+            ordered.append(common)      # the classics, known in advance
+
+        for _rank, mate in self._skeleton_index().get(skeleton(key), [])[:4]:
+            if mate != key and mate not in ordered:
+                ordered.append(mate)
+
+        candidates = self._spell.candidates(key) or set()
+        for mate in sorted(candidates,
+                           key=self._spell.word_usage_frequency,
+                           reverse=True):
+            if mate not in ordered:
+                ordered.append(mate)
+
+        ordered = ordered[:limit]
         # Mirror the original word's capitalization.
         if word[:1].isupper():
-            ranked = [w.capitalize() for w in ranked]
-        return ranked
+            ordered = [w.capitalize() for w in ordered]
+        return ordered
+
+    # -- the dictionary dialog's questions ----------------------------------
+
+    def is_personal(self, word: str) -> bool:
+        """Is this one of the author's own added words?"""
+        return word.lower().strip("'") in self._user_words
+
+    def is_standard(self, word: str) -> bool:
+        """Does the STANDARD dictionary know it (personal words aside)?"""
+        if self._spell is None:
+            return False
+        return not self._spell.unknown([word.lower().strip("'")])
+
+    def personal_words(self) -> list[str]:
+        """The author's dictionary, alphabetical."""
+        return sorted(self._user_words)
+
+    def prefix_matches(self, prefix: str, limit: int = 25) -> list[str]:
+        """STANDARD-dictionary words beginning with `prefix`, most
+        common first — the dictionary dialog's completion, so typing
+        'jeo' surfaces jeopardy and its family (Aug 2026: the list
+        used to show only personal words, which knew Jeremiah but
+        not Jeopardy).  Uses a lazily-built sorted word list with a
+        binary-searched prefix range: instant at any size."""
+        if self._spell is None or not prefix:
+            return []
+        if not hasattr(self, "_sorted_words"):
+            frequencies = getattr(
+                getattr(self._spell, "word_frequency", None),
+                "dictionary", {}) or {}
+            self._sorted_words = sorted(frequencies)
+            self._word_freq = frequencies
+        import bisect
+
+        prefix = prefix.lower()
+        lo = bisect.bisect_left(self._sorted_words, prefix)
+        hi = bisect.bisect_left(self._sorted_words, prefix + "￿")
+        span = self._sorted_words[lo:hi]
+        span.sort(key=lambda w: self._word_freq.get(w, 0), reverse=True)
+        return span[:limit]
 
     def add_to_dictionary(self, word: str) -> None:
         """Remember a word forever (persisted in the user dictionary)."""

@@ -169,6 +169,10 @@ class PrintFormat:
     name: str
     path: Optional[Path] = None
     page_size: str = "Letter"
+    #: Ask the printer for two-sided printing (long-edge flip).  The
+    #: format carries the intention, so a paper-saving draft never
+    #: depends on remembering a dialog checkbox.
+    duplex: bool = False
     margins: Margins = field(default_factory=Margins)
     body: StyleSpec = field(default_factory=lambda: _BODY_DEFAULTS)
     headings: dict = field(default_factory=dict)   # level -> StyleSpec
@@ -361,9 +365,14 @@ def load_format(path: Union[str, Path]) -> PrintFormat:
     fmt = PrintFormat(name=name, path=path)
 
     page = data.get("page", {})
-    unknown = set(page) - {"size", "margins_mm", "margins"}
+    unknown = set(page) - {"size", "margins_mm", "margins", "duplex"}
     if unknown:
         raise FormatError(f"{path.name}: unknown key(s) {sorted(unknown)} in [page]")
+    duplex = page.get("duplex", False)
+    if not isinstance(duplex, bool):
+        raise FormatError(
+            f"{path.name}: duplex must be true or false")
+    fmt.duplex = duplex
     size = page.get("size", "Letter")
     if size not in PAGE_SIZES:
         raise FormatError(

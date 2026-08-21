@@ -206,7 +206,24 @@ stumbles. (On Ubuntu this needs the standard speech system:
 *and in the notes pane*, which shares the same dictionary and offers
 the same right-click suggestions; right-click for
 suggestions or *Add to dictionary* (the dictionary is seeded with the
-names of the books of the Bible). WordVault also *watches how you
+names of the books of the Bible). Suggestions draw on four wells,
+strongest first: your **own history** (a misspelling fixed even once
+leads with its proven correction ever after), the **common classics**
+(~2,600 famous English misspellings ship with WordVault — recieve,
+seperate, teh — answered instantly, courtesy of Wikipedia's
+community list), **sound-alikes** (words
+are indexed by their consonant skeleton, so a phonetic try like
+"jeprodising" finds "jeopardizing" even though it is too many
+letter-edits away for ordinary spellcheck search — vowels wobble,
+the bones stay true), and the classic close-spellings.
+**Help ▸ Spelling Dictionary…** is the word desk: type any word and
+see at once whether it is known (yours or the standard dictionary's),
+whether you have stumbled over it before and what you corrected it
+to, what it might *be* if unknown — and add it to your dictionary on
+the spot. The matching list even lets your errors serve as lookup
+keys: your past fixes appear as "typed → corrected", so typing
+"jep" surfaces *jeprodising → jeopardizing* — your own misspelling,
+pointing at its word. WordVault also *watches how you
 fix things*: every correction is classified (vowel swap, dropped
 letter, swapped letters…) and **Help ▸ My Spelling Habits** shows the
 running mirror. When the same fix has been seen enough times,
@@ -425,10 +442,12 @@ and running **headers and footers** with `{page}`, `{pages}`,
 reported by name when it loads, never silently guessed at. The full
 specification is in `docs/format-file.md`.
 
-Shipped formats: **Essay** (study papers), **Book Chapter**,
-**Manuscript (double-spaced)** for submissions, and **KDP 6x9 Book**
-(Georgia 11pt justified, mirror margins, measured from a real book
-manuscript).
+Shipped formats: **Essay** (study papers), **Essay Draft** (the
+paper-saver: half-inch margins, 10pt type, tight spacing, two-sided
+printing requested by the format itself — for drafts you mark up),
+**Book Chapter**, **Manuscript (double-spaced)** for submissions,
+and **KDP 6x9 Book** (Georgia 11pt justified, mirror margins,
+measured from a real book manuscript).
 
 ---
 
