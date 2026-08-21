@@ -51,6 +51,7 @@ class SettingsDialog(QDialog):
         font_family: str = "",
         notes_family: str = "",
         notes_size: int = 10,
+        reading_speed: int = 100,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -96,6 +97,14 @@ class SettingsDialog(QDialog):
         self._notes_size_spin.setSuffix(" pt")
         self._notes_size_spin.setValue(notes_size)
 
+        # Read Aloud pace: 100% is the voice's natural speed; 50% is
+        # half speed for careful proofing, 150% for quick passes.
+        self._speed_spin = QSpinBox(self)
+        self._speed_spin.setRange(50, 150)
+        self._speed_spin.setSingleStep(5)
+        self._speed_spin.setSuffix(" %")
+        self._speed_spin.setValue(reading_speed)
+
         # How far back File > Recent remembers (the list itself lives
         # in QSettings; this is only its length).
         self._recent_spin = QSpinBox(self)
@@ -136,6 +145,7 @@ class SettingsDialog(QDialog):
         form.addRow("Editor font size:", self._font_spin)
         form.addRow("Notes font:", self._notes_font_combo)
         form.addRow("Notes font size:", self._notes_size_spin)
+        form.addRow("Reading speed:", self._speed_spin)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
         form.addRow(self._enc_box)
@@ -182,6 +192,10 @@ class SettingsDialog(QDialog):
     @property
     def notes_size(self) -> int:
         return self._notes_size_spin.value()
+
+    @property
+    def reading_speed(self) -> int:
+        return self._speed_spin.value()
 
     @property
     def recent_limit(self) -> int:

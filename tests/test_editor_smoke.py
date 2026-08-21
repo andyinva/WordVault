@@ -491,6 +491,27 @@ def test_sentence_start_finds_the_nearest_sentence():
     assert _sentence_start(text, 0) == 0
 
 
+def test_speakable_map_points_back_to_the_document():
+    """The karaoke map: every spoken character knows its index in the
+    original marked-up text, so the engine's word offsets can light
+    the right span in the editor."""
+    from wordvault.editor.main_window import _speakable_mapped
+
+    original = "# Head\n\nThe **kingdom** here.\n"
+    spoken, positions = _speakable_mapped(original, base=100)
+    assert len(spoken) == len(positions)
+    assert spoken.startswith("Head\n")
+    # "Head" maps to its true place after the stripped "# ".
+    h = spoken.index("Head")
+    assert positions[h] == 100 + original.index("Head")
+    # "kingdom" maps back INSIDE the ** marks.
+    k = spoken.index("kingdom")
+    assert positions[k] == 100 + original.index("kingdom")
+    # The characters after the marks keep alignment too.
+    w = spoken.index("here")
+    assert positions[w] == 100 + original.index("here")
+
+
 def test_read_button_exists(window_with_history):
     window, _doc = window_with_history
     assert window._read_btn.text() == "🔊 Read"

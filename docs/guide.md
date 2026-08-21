@@ -189,7 +189,13 @@ Ctrl+Shift+R) reads the document to you in the system's digital
 voice — the selection if you have one, otherwise from the start of
 the *sentence* under your cursor to the end of the document. Click
 again to stop. Markdown markers are silent: you hear the words, not
-the typography. Hearing a sentence
+the typography. As the voice reads, **the word being spoken lights
+up** in the text and the view drifts along to keep it on screen —
+follow with your eyes, stop the voice, and you know exactly where
+you were. (The moving light needs a recent Qt; without it, reading
+simply proceeds unlit.) The pace is yours: **Reading speed** in
+Help ▸ Settings… runs from 50% (half speed, for careful proofing)
+to 150% (a brisk skim), with 100% the voice's natural rate. Hearing a sentence
 catches what the eye forgives — the doubled word, the rhythm that
 stumbles. (On Ubuntu this needs the standard speech system:
 `sudo apt install speech-dispatcher`.)

@@ -108,20 +108,42 @@ def _format_edit_time(total_seconds: int) -> str:
     return f"{minutes} min"
 
 
-def _speakable(markdown_text: str) -> str:
-    """Markdown -> the words a voice should SAY: heading marks, quote
-    and list markers, and emphasis asterisks are silent typography,
-    not speech ('kingdom', never 'asterisk asterisk kingdom')."""
+def _speakable_mapped(markdown_text: str, base: int = 0):
+    """Markdown -> (spoken_text, positions): the words a voice should
+    SAY — heading marks, quote and list markers, and emphasis
+    asterisks are silent typography ('kingdom', never 'asterisk
+    asterisk kingdom') — PLUS a map from every spoken character back
+    to its index in the original document (base = document index of
+    markdown_text[0]).  The map is what lets the karaoke highlight
+    find each spoken word in the marked-up editor text."""
     import re
 
-    lines = []
+    markers = (re.compile(r"^#{1,6}\s+"), re.compile(r"^>\s?"),
+               re.compile(r"^[-*]\s+"), re.compile(r"^\d{1,3}\.\s+"))
+    spoken: list[str] = []
+    positions: list[int] = []
+    offset = 0                      # index within markdown_text
     for line in markdown_text.split("\n"):
-        line = re.sub(r"^#{1,6}\s+", "", line)      # heading marks
-        line = re.sub(r"^>\s?", "", line)           # quote marker
-        line = re.sub(r"^[-*]\s+", "", line)        # bullet marker
-        line = re.sub(r"^\d{1,3}\.\s+", "", line)   # list number
-        lines.append(line)
-    return "\n".join(lines).replace("*", "")
+        skip = 0
+        for marker in markers:
+            m = marker.match(line)
+            if m:
+                skip = m.end()
+                break
+        for i, ch in enumerate(line):
+            if i < skip or ch == "*":
+                continue            # silent typography
+            spoken.append(ch)
+            positions.append(base + offset + i)
+        spoken.append("\n")         # the newline between lines
+        positions.append(base + offset + len(line))
+        offset += len(line) + 1
+    return "".join(spoken), positions
+
+
+def _speakable(markdown_text: str) -> str:
+    """The spoken text alone (see _speakable_mapped)."""
+    return _speakable_mapped(markdown_text)[0]
 
 
 class MainWindow(QMainWindow):
@@ -1018,6 +1040,7 @@ class MainWindow(QMainWindow):
             font_family=self._editor.font().family(),
             notes_family=self._notes.font().family(),
             notes_size=self._notes.font().pointSize(),
+            reading_speed=self._reading_speed_percent(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1032,6 +1055,8 @@ class MainWindow(QMainWindow):
         self._settings.setValue("notes_font_family", dialog.notes_family)
         self._settings.setValue("notes_font_pt", dialog.notes_size)
         self._apply_notes_font()
+        self._settings.setValue("tts_rate_percent", dialog.reading_speed)
+        self._apply_reading_speed()   # takes hold at the next Read
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
         self._settings.setValue("reopen_last", dialog.reopen_last)
@@ -1071,7 +1096,28 @@ class MainWindow(QMainWindow):
             return None
         self._tts = QTextToSpeech(self)
         self._tts.stateChanged.connect(self._on_tts_state)
+        # Word-by-word progress (Qt 6.6+, engine willing): the karaoke
+        # highlight.  Older Qt or a reticent engine: reading still
+        # works, just without the moving light.
+        if hasattr(self._tts, "sayingWord"):
+            self._tts.sayingWord.connect(self._on_tts_word)
+        self._apply_reading_speed()
         return self._tts
+
+    def _reading_speed_percent(self) -> int:
+        """The Settings pace, clamped to the dialog's 50..150 range."""
+        try:
+            value = int(self._settings.value("tts_rate_percent", 100))
+        except (TypeError, ValueError):
+            value = 100
+        return max(50, min(150, value))
+
+    def _apply_reading_speed(self) -> None:
+        """Percent -> Qt's rate scale (-1..+1 around normal): 100% is
+        the voice's natural pace, 50% half speed for careful proofing,
+        150% a brisk skim."""
+        if getattr(self, "_tts", None) is not None:
+            self._tts.setRate((self._reading_speed_percent() - 100) / 100.0)
 
     def _on_read_aloud(self) -> None:
         """The 🔊 button / Ctrl+Shift+R: read the SELECTION, or from
@@ -1097,17 +1143,19 @@ class MainWindow(QMainWindow):
             self._read_btn.setText("🔊 Read")
             return
         if cursor.hasSelection():
-            # Qt marks paragraph breaks in selections with U+2029.
-            text = cursor.selectedText().replace("\u2029", "\n")
+            # Qt marks paragraph breaks in selections with U+2029
+            # (same length as \n, so the position map stays true).
+            base = cursor.selectionStart()
+            raw = cursor.selectedText().replace("\u2029", "\n")
         else:
             # From the start of the SENTENCE under the cursor: whole
             # sentences sound right, whole paragraphs repeat too much.
             block = cursor.block()
             offset = cursor.position() - block.position()
-            start = block.position() + _sentence_start(block.text(), offset)
-            text = self._editor.toPlainText()[start:]
-        text = _speakable(text).strip()
-        if not text:
+            base = block.position() + _sentence_start(block.text(), offset)
+            raw = self._editor.toPlainText()[base:]
+        text, self._read_positions = _speakable_mapped(raw, base)
+        if not text.strip():
             self.statusBar().showMessage("Nothing to read here.", 4000)
             return
         tts.say(text)
@@ -1129,11 +1177,63 @@ class MainWindow(QMainWindow):
 
     def _on_tts_state(self, state) -> None:
         """The voice finished (or failed): the button offers to read
-        again."""
+        again, and the karaoke light goes out."""
         from PyQt6.QtTextToSpeech import QTextToSpeech
 
         if state != QTextToSpeech.State.Speaking:
             self._read_btn.setText("🔊 Read")
+            self._read_highlight = None
+            self._read_positions = []
+            self._apply_age_colors()      # repaint without the light
+
+    def _on_tts_word(self, _word, _utterance, start, length) -> None:
+        """The engine names the word it is speaking (an offset into
+        the STRIPPED text we handed it); the position map carries it
+        back to the marked-up document, where it lights up — and the
+        view drifts along so the lit word stays on screen."""
+        positions = getattr(self, "_read_positions", None)
+        if (not positions or length <= 0 or start < 0
+                or start + length > len(positions)):
+            return
+        doc_from = positions[start]
+        doc_to = positions[start + length - 1] + 1
+        if doc_to > len(self._editor.toPlainText()):
+            return                        # text changed under the voice
+        self._read_highlight = (doc_from, doc_to)
+        self._apply_age_colors()          # repaints WITH the light
+
+        # Follow gently: scroll only when the word leaves the viewport
+        # (never touching the caret — the reader may be elsewhere).
+        from PyQt6.QtGui import QTextCursor
+
+        cursor = QTextCursor(self._editor.document())
+        cursor.setPosition(doc_from)
+        rect = self._editor.cursorRect(cursor)
+        viewport_h = self._editor.viewport().height()
+        if rect.top() < 0 or rect.bottom() > viewport_h:
+            bar = self._editor.verticalScrollBar()
+            row_h = max(1, self._editor.fontMetrics().height())
+            bar.setValue(bar.value()
+                         + (rect.top() - viewport_h // 3) // row_h)
+
+    def _read_light_selections(self) -> list:
+        """The karaoke highlight as ExtraSelections (empty when the
+        voice is silent) — appended to the age tints so the two
+        features share the one ExtraSelections channel peacefully."""
+        span = getattr(self, "_read_highlight", None)
+        if span is None:
+            return []
+        from PyQt6.QtGui import QColor, QTextCursor
+
+        cursor = QTextCursor(self._editor.document())
+        cursor.setPosition(span[0])
+        cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
+        fmt = QTextCharFormat()
+        fmt.setBackground(QColor("#ffe08a"))      # warm reading light
+        sel = QTextEdit.ExtraSelection()
+        sel.cursor = cursor
+        sel.format = fmt
+        return [sel]
 
     def _build_status_bar(self) -> None:
         """The status bar carries only TRANSIENT messages now — the
@@ -2383,7 +2483,7 @@ class MainWindow(QMainWindow):
             or not self._is_live
             or not self._revisions
         ):
-            self._editor.setExtraSelections([])
+            self._editor.setExtraSelections(self._read_light_selections())
             return
 
         texts = [self._store.get_text(r.id) for r in self._revisions]
@@ -2414,7 +2514,8 @@ class MainWindow(QMainWindow):
                 sel.format = fmt
                 selections.append(sel)
             row += 1
-        self._editor.setExtraSelections(selections)
+        self._editor.setExtraSelections(
+            selections + self._read_light_selections())
 
     def _on_toggle_markdown_styling(self, enabled: bool) -> None:
         """View ▸ Markdown Styling: attach/detach the highlighter.  The

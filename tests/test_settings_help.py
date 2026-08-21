@@ -201,6 +201,15 @@ def test_notes_font_knobs(qapp):
     assert dlg2.notes_size == 14
 
 
+def test_reading_speed_knob(qapp):
+    dlg = _dialog(qapp)
+    assert dlg.reading_speed == 100              # natural pace default
+    dlg._speed_spin.setValue(75)
+    assert dlg.reading_speed == 75
+    dlg._speed_spin.setValue(10)                 # clamped by the range
+    assert dlg.reading_speed == 50
+
+
 def test_recent_limit_default_and_change(qapp):
     """The 'Recent list remembers' knob: defaults to 25, changeable,
     and the spin box clamps out-of-range values."""
