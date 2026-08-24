@@ -243,11 +243,16 @@ the left, newest at the right. Drag the slider, click the **◀ ▶**
 buttons beside it, or use Alt+Left / Alt+Right. Alt+Home jumps to the
 newest.
 
-Stepping into history shows the **end of the document** — the growing
-edge, where each revision's changes appear — so stepping back through
-drafts plays the essay's growth like a film in reverse. Scroll to any
-passage and further steps hold that place; return to the end and the
-view follows the end again.
+While stepping through time the view **holds your place**. Go to a
+passage and every step back or forward keeps it on screen, so you can
+watch one paragraph's history without repositioning. If the passage
+did not yet exist in an older draft, the view rests on the seam where
+it would later be born. Two special stops: at the document's **end**
+(the growing edge), the view follows the end from step to step,
+playing the essay's growth like a film in reverse; and arriving back
+at **Newest** always returns you — scroll and cursor both — to the
+exact spot where you left the live document. A trip into history is
+an excursion: it ends where it began.
 
 ### Reading the past
 
@@ -257,6 +262,12 @@ version** buttons light up blue — the way back. You can click into
 old text (a cursor appears), select, and **copy**: paste into the
 notes pane right away, or into the live text after clicking Newest.
 The past can be quoted, never edited.
+
+Old text also carries a quiet **wheat wash** on the words that have
+since been rewritten or removed — what you are reading that did *not*
+survive into today's draft. Near the newest revision, almost nothing
+is washed; the farther back you step, the more of the page carries
+it: a glance tells you how much the essay has moved since that day.
 
 ### Restoring
 
@@ -398,6 +409,20 @@ space than a single photograph never needs it. The confirmation
 question you answer when banishing is honest for the same reason: it
 does not warn "this cannot be undone," because in WordVault, it can.
 
+### Leaving the vault
+
+**Document ▸ Export As** sends the open document out: as a **.docx**
+with real Word styles rebuilt (the importer's exact reverse —
+headings, bold, italics, lists, and quotes all survive the round
+trip), as **.md** (the text exactly as stored), or as **.txt**
+(Markdown markers stripped — the words without the typography). It
+exports what is *on screen*, so while time traveling you can export
+an old draft as that old draft. For a PDF, use File ▸ Print with any
+format. The fourth entry, **.wvdoc**, is different in kind: it
+carries the document *with its entire revision history*, encrypted,
+for merging into another WordVault — the others export a moment; it
+exports the whole life.
+
 ### Keeping it safe
 
 - **Library ▸ Back Up Library…** writes one encrypted file (AES-256);
@@ -441,6 +466,14 @@ and running **headers and footers** with `{page}`, `{pages}`,
 `{title}`, `{author}`, `{date}`. Mistakes in a format file are
 reported by name when it loads, never silently guessed at. The full
 specification is in `docs/format-file.md`.
+
+**Formats can be learned by example.** File ▸ **Learn Print Format
+from .docx…** reads a Word document you admire — its page size,
+margins (mirror margins included), body and heading styles, and
+whether it numbers its pages — asks what to call the result, and
+writes a validated .wvfmt into your personal formats folder, ready
+in the print chooser at once. The learned file says in its comments
+where it came from, and is yours to tune like any other.
 
 Shipped formats: **Essay** (study papers), **Essay Draft** (the
 paper-saver: half-inch margins, 10pt type, tight spacing, two-sided
@@ -535,7 +568,23 @@ lacks falls back to its nearest look-alike) and its **size**, the
 plainer face), how far
 back **File ▸ Recent** remembers (25 unless you say
 otherwise), whether WordVault **reopens the last document at
-startup** (on by default), and **library encryption**.
+startup** (on by default), **Dark mode** (the whole window, applied
+the moment you click OK — same dress on Windows and Ubuntu), and
+**library encryption**.
+
+### Personal extensions
+
+A copy of WordVault can grow abilities its owner adds by hand. At
+startup the program looks in the personal folder
+`~/.wordvault/extensions/` and loads any Python file there that
+defines a `register(window)` function — typically to add a button to
+the timeline bar with `window.add_extension_button(text, tooltip,
+callback)`. Most copies have no such folder, and see nothing: no
+feature is shipped, hidden, or disabled. An extension is ordinary
+Python running with the program's own powers, so only place files
+there that you wrote or have read and trust — and a broken one is
+skipped with a note on the console, never allowed to stop WordVault
+from starting.
 
 ---
 

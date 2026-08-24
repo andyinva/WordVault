@@ -201,6 +201,16 @@ def test_notes_font_knobs(qapp):
     assert dlg2.notes_size == 14
 
 
+def test_dark_mode_checkbox(qapp):
+    dlg = _dialog(qapp)
+    assert dlg.dark_mode is False                # light by default
+    dlg._dark_box.setChecked(True)
+    assert dlg.dark_mode is True
+    dlg2 = SettingsDialog(None, encrypted=False, idle_seconds=3,
+                          font_size=12, dark_mode=True)
+    assert dlg2.dark_mode is True
+
+
 def test_reading_speed_knob(qapp):
     dlg = _dialog(qapp)
     assert dlg.reading_speed == 100              # natural pace default

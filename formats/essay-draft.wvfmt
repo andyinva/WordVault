@@ -21,25 +21,25 @@ right = 0.5
 
 [body]
 font = "Georgia"
-size_pt = 10
+size_pt = 9
 line_spacing = 1.1                # tight but still markable
 align = "left"                    # ragged right reads fine in drafts
 space_after_pt = 3
 
 [heading1]
-size_pt = 13
+size_pt = 12
 bold = true
 space_before_pt = 10
 space_after_pt = 5
 
 [heading2]
-size_pt = 12
+size_pt = 11
 bold = true
 space_before_pt = 8
 space_after_pt = 4
 
 [heading3]
-size_pt = 11
+size_pt = 10
 bold = true
 space_before_pt = 6
 space_after_pt = 3

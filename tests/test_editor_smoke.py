@@ -134,12 +134,14 @@ def test_history_mode_is_marked_and_copyable(window_with_history):
     assert flags & Qt.TextInteractionFlag.TextEditable
 
 
-def test_history_stepping_follows_the_growing_end(qapp, tmp_path):
-    """The view rule for time travel (Aug 2026): stepping into history
-    jumps to the END of the document — the cusp where essays grow, so
-    the changes show as you step.  But once the reader deliberately
-    scrolls elsewhere, further steps HOLD that place; and sitting at
-    the end keeps following the end."""
+def test_history_stepping_holds_the_readers_place(qapp, tmp_path):
+    """The view rules for time travel (Aug 2026, revised twice at the
+    author's request): stepping into history HOLDS the reader's place
+    (content-anchored — a raw scroll value lies across revisions);
+    sitting at the END keeps following the end (the growing edge); and
+    Newest restores the departure photograph exactly."""
+    import time
+
     window = MainWindow(tmp_path / "scroll.db")
     doc = window._store.create_document("Long")
     lines = "\n".join(f"line {i}" for i in range(400))
@@ -150,31 +152,37 @@ def test_history_stepping_follows_the_growing_end(qapp, tmp_path):
     window._open_document(doc.id)
     window.resize(600, 400)
 
+    def pump(ms=400):
+        # Restores land on zero-delay timers plus brief retries while
+        # the fresh text lays out — run the loop as a real app would.
+        end = time.time() + ms / 1000.0
+        while time.time() < end:
+            qapp.processEvents()
+            time.sleep(0.01)
+
     bar = window._editor.verticalScrollBar()
     if bar.maximum() == 0:
         window.close()
         pytest.skip("offscreen viewport shows the whole document")
     middle = bar.maximum() // 2
     bar.setValue(middle)
+    departed = bar.value()
 
-    # The restore lands on a zero-delay timer (the fresh text has no
-    # layout yet) — give the event loop a turn after each step, as a
-    # running app would.
-    window._timeline._slider.setValue(1)          # live -> history: END
-    qapp.processEvents()
-    bar = window._editor.verticalScrollBar()
-    assert bar.value() == bar.maximum()
+    window._timeline._slider.setValue(1)          # live -> history: HELD
+    pump()
+    assert abs(bar.value() - departed) <= 3
 
-    bar.setValue(middle)                          # reader picks a passage
-    window._timeline._slider.setValue(0)          # step again: place HELD
-    qapp.processEvents()
-    assert abs(window._editor.verticalScrollBar().value() - middle) <= 2
+    window._timeline._slider.setValue(0)          # step again: still held
+    pump()
+    assert abs(bar.value() - departed) <= 3
 
-    bar = window._editor.verticalScrollBar()
-    bar.setValue(bar.maximum())                   # back to the end...
-    window._timeline._slider.setValue(1)          # ...stays at the end
-    qapp.processEvents()
-    bar = window._editor.verticalScrollBar()
+    window._timeline._slider.setValue(2)          # Newest: the photograph
+    pump()
+    assert abs(bar.value() - departed) <= 2
+
+    bar.setValue(bar.maximum())                   # now sit at the end...
+    window._timeline._slider.setValue(1)          # ...steps follow the end
+    pump()
     assert bar.value() == bar.maximum()
     window.close()
 
@@ -534,6 +542,38 @@ def test_speakable_map_points_back_to_the_document():
     # The characters after the marks keep alignment too.
     w = spoken.index("here")
     assert positions[w] == 100 + original.index("here")
+
+
+def test_dark_mode_applies_and_reverts(qapp, tmp_path):
+    """The Settings checkbox: dark dresses the palette and our own
+    surfaces; unchecking truly restores the platform's look."""
+    from PyQt6.QtGui import QPalette
+
+    window = MainWindow(tmp_path / "theme.db")
+    light_window_color = qapp.palette().color(QPalette.ColorRole.Window)
+
+    window._apply_theme(True)
+    dark_color = qapp.palette().color(QPalette.ColorRole.Window)
+    assert dark_color.lightness() < 100          # genuinely dark
+    assert "#202226" in window._title_label.styleSheet()
+    assert "#26251f" in window._notes.styleSheet()
+    assert "#2e2a20" in window._editor.styleSheet()   # dark history amber
+    # The framed side panels follow the theme (the Outline stayed
+    # glaring white in the dark once — never again).
+    assert len(window._panel_frames) == 3
+    for panel in window._panel_frames:
+        assert "#232428" in panel.styleSheet()
+
+    window._apply_theme(False)
+    back = qapp.palette().color(QPalette.ColorRole.Window)
+    # Light restore must return the PLATFORM'S OWN palette exactly —
+    # not a generic look-alike (the flat-gray light-mode bug).
+    assert back == light_window_color
+    assert "#f4f6f8" in window._title_label.styleSheet()
+    for panel in window._panel_frames:          # frames come home too
+        assert "#b9c4d0" in panel.styleSheet()
+        assert "#232428" not in panel.styleSheet()
+    window.close()
 
 
 def test_read_button_exists(window_with_history):

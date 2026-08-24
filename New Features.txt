@@ -1,10 +1,7 @@
 1. Have the ability to use the AND or the OR in search.
-2. Increase and decrease the editor or note window font size.
+2. 
 3. How well does the Word Vault Handel an instantaneous power outage. 
 4. Would it be possible to create a single file installer. 
 5. plan for new features: When looking for new features look for things that make your writing more convenient and intuitive. 
 6. if you past text in the text in it will fill in without raising the screen. The new pasted text will be below the bottom of the screen so you have to scroll down to see what you pasted in. 
-7. Can I have curser become a bit smaller when appearing in the editor? I have the windows pointer larger for my eyes but my guess is this makes the editing cursers larger as well. In any came the cursor in the editor seems a bit over sized.    
-8. make the bottom of the Outline view line up with the bottom of the Note editing area. The line up the bottom of the library info box with the same. 
-9. I will past in the screen print of the app main window and ask AI to come up with a less flat looking interface by using three dimensional borders around each section of the screen. I count 5 subsections of the main window. 
-10.No spelling check in the notes section, which also need the ability to change the font and its size.
+7. I will past in the screen print of the app main window and ask AI to come up with a less flat looking interface by using three dimensional borders around each section of the screen. I count 5 subsections of the main window. 

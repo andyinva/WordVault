@@ -52,6 +52,7 @@ class SettingsDialog(QDialog):
         notes_family: str = "",
         notes_size: int = 10,
         reading_speed: int = 100,
+        dark_mode: bool = False,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -118,6 +119,10 @@ class SettingsDialog(QDialog):
         )
         self._reopen_box.setChecked(reopen_last)
 
+        # Dark mode: applied to the whole window, immediately on OK.
+        self._dark_box = QCheckBox("Dark mode", self)
+        self._dark_box.setChecked(dark_mode)
+
         # --- encryption ---
         self._enc_box = QCheckBox(
             "Encrypt the library on disk (passphrase asked at startup)", self
@@ -146,6 +151,7 @@ class SettingsDialog(QDialog):
         form.addRow("Notes font:", self._notes_font_combo)
         form.addRow("Notes font size:", self._notes_size_spin)
         form.addRow("Reading speed:", self._speed_spin)
+        form.addRow(self._dark_box)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
         form.addRow(self._enc_box)
@@ -196,6 +202,10 @@ class SettingsDialog(QDialog):
     @property
     def reading_speed(self) -> int:
         return self._speed_spin.value()
+
+    @property
+    def dark_mode(self) -> bool:
+        return self._dark_box.isChecked()
 
     @property
     def recent_limit(self) -> int:

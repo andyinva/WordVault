@@ -19,6 +19,7 @@ touch Qt.
 
 from __future__ import annotations
 
+import re
 from difflib import SequenceMatcher
 
 from PyQt6.QtGui import QColor
@@ -26,6 +27,72 @@ from PyQt6.QtGui import QColor
 #: The tint of the OLDEST text: a muted archive blue-gray.  Newest text
 #: uses the editor's normal text color; everything between interpolates.
 OLDEST_COLOR = QColor("#7d8fa9")
+
+#: While time traveling, words that have SINCE been changed get a quiet
+#: background wash — wheat, kin to the amber history border, deliberately
+#: not bold.  One shade per theme.
+CHANGED_WASH_LIGHT = QColor("#f2e7c9")
+CHANGED_WASH_DARK = QColor("#4a4232")
+
+
+def corresponding_line(old_text: str, new_text: str, line: int) -> int:
+    """Where line `line` of old_text lives in new_text.
+
+    The view-holding rule for time travel: a scrollbar VALUE is a lie
+    across revisions (older drafts have different text above the same
+    passage), but the passage's own lines mostly survive from revision
+    to revision — so difflib finds the watched line's twin and the view
+    follows CONTENT, not pixels.  Lines inside a rewritten region map
+    proportionally into their replacement; lines that vanished map to
+    the seam where they used to be.  Pure text in, an int out.
+    """
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    if not old_lines or not new_lines:
+        return 0
+    line = max(0, min(line, len(old_lines) - 1))
+    matcher = SequenceMatcher(a=old_lines, b=new_lines, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if not (i1 <= line < i2):
+            continue
+        if tag == "equal":
+            return j1 + (line - i1)          # the very same line
+        if j2 > j1:                          # rewritten: keep proportion
+            fraction = (line - i1) / max(i2 - i1, 1)
+            return min(j1 + int(fraction * (j2 - j1)), j2 - 1)
+        return min(j1, len(new_lines) - 1)   # deleted: land on the seam
+    return len(new_lines) - 1
+
+
+def changed_word_spans(old_text: str,
+                       new_text: str) -> list[tuple[int, int]]:
+    """Character spans in `old_text` of the words that do NOT survive
+    into `new_text` — the material that has since been rewritten or
+    removed.
+
+    Word-level (whitespace-split) difflib match: 'equal' words are the
+    survivors, 'replace'/'delete' words are the changed ones.  Adjacent
+    spans are merged so the caller paints few, long washes rather than
+    many single-word ones.  Pure text in, plain ints out — testable
+    headless, like line_birth_indices above.
+    """
+    old_tokens = list(re.finditer(r"\S+", old_text))
+    new_words = re.findall(r"\S+", new_text)
+    matcher = SequenceMatcher(a=[t.group() for t in old_tokens],
+                              b=new_words, autojunk=False)
+    spans: list[tuple[int, int]] = []
+    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+        if tag not in ("replace", "delete") or i2 <= i1:
+            continue
+        start = old_tokens[i1].start()
+        end = old_tokens[i2 - 1].end()
+        # Merge with the previous span when only whitespace separates
+        # them — one calm wash instead of a flicker of small ones.
+        if spans and start <= spans[-1][1] + 1:
+            spans[-1] = (spans[-1][0], end)
+        else:
+            spans.append((start, end))
+    return spans
 
 
 def line_birth_indices(texts: list[str]) -> list[int]:

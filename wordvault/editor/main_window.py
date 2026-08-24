@@ -41,6 +41,7 @@ from typing import Optional, Union
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
     QAction,
+    QColor,
     QKeySequence,
     QPalette,
     QTextCharFormat,
@@ -55,12 +56,21 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from wordvault.editor.age_colors import age_color, age_rank, line_birth_indices
+from wordvault.editor.age_colors import (
+    CHANGED_WASH_DARK,
+    CHANGED_WASH_LIGHT,
+    age_color,
+    age_rank,
+    changed_word_spans,
+    corresponding_line,
+    line_birth_indices,
+)
 from wordvault.editor.editor_pane import EditorPane
 from wordvault.editor.info_panel import InfoPanel, LibraryInfoPanel
 from wordvault.editor.outline import OutlinePane, section_bounds
@@ -241,9 +251,35 @@ class MainWindow(QMainWindow):
         )
         self._refresh_autocorrect()
 
+        # Theme: photograph the platform's REAL look before anything
+        # is touched — style name AND the actual startup palette (the
+        # style's generic standardPalette() is NOT the same thing, a
+        # lesson learned when "light mode" came back flat and gray).
+        # Light mode at startup then touches nothing at all.
+        from PyQt6.QtGui import QPalette as _QPalette
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        self._base_style_name = app.style().objectName()
+        self._base_palette = _QPalette(app.palette())
+        self._dark_mode = False
+        if self._settings.value("dark_mode", False, type=bool):
+            self._apply_theme(True)
+
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
         self._restore_window_state()
+
+        # Personal extensions (see wordvault/editor/extensions.py):
+        # abilities the OWNER of this copy added, loaded from
+        # ~/.wordvault/extensions.  Most copies have none, and that is
+        # by design — nothing is shipped, hidden, or disabled.
+        from wordvault.editor.extensions import load_extensions
+
+        names = load_extensions(self)
+        if names:
+            self.statusBar().showMessage(
+                "Personal extensions loaded: " + ", ".join(names), 5000)
 
     # ---------------------------------- window-state persistence -----------
 
@@ -594,19 +630,27 @@ class MainWindow(QMainWindow):
         corners have room to show against the dock's edges."""
 
         def framed(panel, name: str) -> QWidget:
-            """A host that draws a rounded hairline around `panel`."""
+            """A host that draws a rounded hairline around `panel`.
+
+            The frame's colors are THEME work: a stylesheet on a
+            widget makes Qt stop trusting the palette for its
+            background (which left the Outline glaring white in dark
+            mode), so every framed panel registers itself and
+            _apply_theme restyles them all, light or dark."""
             host = QWidget(self)
             host.setObjectName(name)
             box = QVBoxLayout(host)
             box.setContentsMargins(3, 3, 3, 3)
             box.addWidget(panel)
             panel.setObjectName(name + "Inner")
-            # The frame lives on the INNER widget (list/tree/panel), so
-            # scrollbars and content clip inside the rounded line.
+            panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            if not hasattr(self, "_panel_frames"):
+                self._panel_frames = []
+            self._panel_frames.append(panel)
+            # The light dress, worn from birth (dark mode restyles).
             panel.setStyleSheet(
                 f"#{name}Inner {{ border: 1px solid #b9c4d0;"
                 f" border-radius: 6px; }}")
-            panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
             return host
 
         self._outline = OutlinePane(self)
@@ -681,6 +725,14 @@ class MainWindow(QMainWindow):
         print_action.setShortcut("Ctrl+Shift+P")
         print_action.triggered.connect(self._on_print)
         file_menu.addAction(print_action)
+
+        learn_action = QAction("&Learn Print Format from .docx…", self)
+        learn_action.setToolTip(
+            "Read a Word document's page, margins, and styles and "
+            "create a .wvfmt that prints like it"
+        )
+        learn_action.triggered.connect(self._on_learn_format)
+        file_menu.addAction(learn_action)
 
         page_setup_action = QAction("Page Se&tup…", self)
         page_setup_action.triggered.connect(self._on_page_setup)
@@ -806,9 +858,27 @@ class MainWindow(QMainWindow):
         verses_action.triggered.connect(self._on_shared_verses)
         doc_menu.addAction(verses_action)
 
-        export_action = QAction("&Export as .wvdoc…", self)
-        export_action.triggered.connect(self._on_export_wvdoc)
-        doc_menu.addAction(export_action)
+        # Export As: every way a document leaves the vault, under one
+        # roof.  The first three export what is ON SCREEN (a viewed
+        # old draft exports as that old draft); .wvdoc carries the
+        # document WITH its whole history, encrypted, to another
+        # WordVault.
+        export_menu = doc_menu.addMenu("Export &As")
+        for label, kind in (("&Word Document (.docx)…", "docx"),
+                            ("&Markdown File (.md)…", "md"),
+                            ("Plain &Text File (.txt)…", "txt")):
+            action = QAction(label, self)
+            action.triggered.connect(
+                lambda _c, k=kind: self._on_export_as(k))
+            export_menu.addAction(action)
+        export_menu.addSeparator()
+        wvdoc_action = QAction("&WordVault Document (.wvdoc)…", self)
+        wvdoc_action.setToolTip(
+            "The document WITH its full revision history, encrypted — "
+            "for carrying to another WordVault"
+        )
+        wvdoc_action.triggered.connect(self._on_export_wvdoc)
+        export_menu.addAction(wvdoc_action)
 
         # --- View menu: age colors, focus mode, panels (stage 7) ---
         view_menu = self.menuBar().addMenu("&View")
@@ -1038,6 +1108,22 @@ class MainWindow(QMainWindow):
         help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
 
+    # ------------------------------------------ personal extensions --------
+    def add_extension_button(self, text: str, tooltip: str,
+                             callback) -> QPushButton:
+        """The one-line API personal extensions use to get a button.
+
+        The button joins the timeline bar at the far right, beside
+        Read — the established home for editor buttons.  NoFocus, like
+        its neighbors, so clicking it never steals the text cursor
+        (the lesson the Read button taught us)."""
+        button = QPushButton(text, self)
+        button.setToolTip(tooltip)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.clicked.connect(callback)
+        self._timeline.layout().addWidget(button)
+        return button
+
     def _on_help(self) -> None:
         from wordvault.editor.help_dialog import HelpDialog
 
@@ -1082,6 +1168,7 @@ class MainWindow(QMainWindow):
             notes_family=self._notes.font().family(),
             notes_size=self._notes.font().pointSize(),
             reading_speed=self._reading_speed_percent(),
+            dark_mode=getattr(self, "_dark_mode", False),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1098,6 +1185,9 @@ class MainWindow(QMainWindow):
         self._apply_notes_font()
         self._settings.setValue("tts_rate_percent", dialog.reading_speed)
         self._apply_reading_speed()   # takes hold at the next Read
+        self._settings.setValue("dark_mode", dialog.dark_mode)
+        if dialog.dark_mode != getattr(self, "_dark_mode", False):
+            self._apply_theme(dialog.dark_mode)   # live, no restart
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
         self._settings.setValue("reopen_last", dialog.reopen_last)
@@ -1213,6 +1303,7 @@ class MainWindow(QMainWindow):
         # settle.  Bound method, not a closure: PyQt cancels it if the
         # window dies first (the history-stepping crash's lesson).
         self._pending_scroll = scroll_pos
+        self._restore_tries = 0           # fresh retry budget
         self._restore_history_scroll()
         QTimer.singleShot(0, self._restore_history_scroll)
 
@@ -1271,6 +1362,8 @@ class MainWindow(QMainWindow):
         cursor.setPosition(span[1], QTextCursor.MoveMode.KeepAnchor)
         fmt = QTextCharFormat()
         fmt.setBackground(QColor("#ffe08a"))      # warm reading light
+        fmt.setForeground(QColor("#000000"))      # readable on it in
+                                                  # BOTH themes
         sel = QTextEdit.ExtraSelection()
         sel.cursor = cursor
         sel.format = fmt
@@ -1529,6 +1622,135 @@ class MainWindow(QMainWindow):
         refill()
         dialog.exec()
 
+    def _on_learn_format(self) -> None:
+        """File ▸ Learn Print Format from .docx: pick a Word document
+        whose look you admire, name the format, and WordVault reads
+        the page, margins, and styles out of the file and writes a
+        .wvfmt that prints like it — learning by example, the way the
+        KDP 6x9 format was once measured by hand."""
+        import re as _re
+
+        from PyQt6.QtWidgets import QFileDialog
+
+        import wordvault.printing.format_file as ff
+        from wordvault.printing.format_file import (
+            FormatError,
+            load_format,
+        )
+        from wordvault.printing.learn_format import learn_format
+
+        path, _f = QFileDialog.getOpenFileName(
+            self, "Learn Print Format from a Word Document", "",
+            "Word documents (*.docx)")
+        if not path:
+            return
+        default_name = Path(path).stem.replace("_", " ").strip()
+        name, ok = QInputDialog.getText(
+            self, "Name the Format",
+            "What should this print format be called?",
+            text=default_name)
+        name = name.strip()
+        if not ok or not name:
+            return
+
+        try:
+            toml_text = learn_format(path, name)
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot learn format",
+                                f"{Path(path).name}: {exc}")
+            return
+
+        # The learner must never emit an invalid format: validate the
+        # result through the real loader before it reaches the shelf.
+        ff.FORMATS_DIR.mkdir(parents=True, exist_ok=True)
+        slug = _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") \
+            or "learned"
+        target = ff.FORMATS_DIR / f"{slug}.wvfmt"
+        probe = target.with_suffix(".wvfmt.tmp")
+        probe.write_text(toml_text, encoding="utf-8")
+        try:
+            fmt = load_format(probe)
+        except FormatError as exc:
+            probe.unlink(missing_ok=True)
+            QMessageBox.warning(
+                self, "Cannot learn format",
+                f"The learned file did not validate — please report "
+                f"this:\n{exc}")
+            return
+        probe.unlink(missing_ok=True)
+
+        if target.exists():
+            answer = QMessageBox.question(
+                self, "Format exists",
+                f"{target.name} already exists in your formats folder. "
+                f"Replace it?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        target.write_text(toml_text, encoding="utf-8")
+
+        traits = []
+        if fmt.margins.mirrored:
+            traits.append("mirror margins")
+        if fmt.footer.wanted():
+            traits.append("page numbers")
+        summary = (f"'{name}' learned: {fmt.page_size} page, "
+                   f"{fmt.body.font} {fmt.body.size_pt:g}pt body"
+                   + (", " + ", ".join(traits) if traits else ""))
+        QMessageBox.information(
+            self, "Format learned",
+            summary + f".\n\nSaved to your formats folder — it is now "
+            f"a choice in File ▸ Print. Edit it anytime:\n{target}")
+
+    def _on_export_as(self, kind: str) -> None:
+        """Document ▸ Export As: the text ON SCREEN leaves the vault
+        as .docx (Word styles rebuilt — the importer's exact reverse),
+        .md (the text as it is), or .txt (Markdown markers stripped:
+        the words without the typography)."""
+        import re as _re
+
+        if self._current_doc is None:
+            self.statusBar().showMessage("No document open.", 4000)
+            return
+        from PyQt6.QtWidgets import QFileDialog
+
+        text = self._editor.toPlainText()
+        filters = {
+            "docx": "Word documents (*.docx)",
+            "md": "Markdown files (*.md)",
+            "txt": "Text files (*.txt)",
+        }
+        stem = _re.sub(r'[<>:"/\\|?*]', "", self._current_doc.title
+                       ).strip().rstrip(".") or "document"
+        path, _f = QFileDialog.getSaveFileName(
+            self, "Export Document", f"{stem}.{kind}", filters[kind])
+        if not path:
+            return
+        if not path.lower().endswith(f".{kind}"):
+            path += f".{kind}"          # the suffix guard, as always
+
+        try:
+            if kind == "docx":
+                from wordvault.export_docx import markdown_to_docx
+
+                markdown_to_docx(
+                    text, path, title=self._current_doc.title,
+                    author=str(self._settings.value("author", "")))
+            elif kind == "md":
+                Path(path).write_text(text, encoding="utf-8")
+            else:
+                plain = _speakable(text).rstrip("\n") + "\n"
+                Path(path).write_text(plain, encoding="utf-8")
+        except ImportError:
+            QMessageBox.information(
+                self, "Export",
+                "Word export needs the python-docx package.\n"
+                "Install it with:  pip install python-docx")
+            return
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        self.statusBar().showMessage(f"Exported to {path}", 8000)
+
     def _on_refresh_formatting(self) -> None:
         """Library ▸ Refresh Formatting from Originals: re-read every
         imported document's original .docx with the CURRENT converter
@@ -1725,6 +1947,10 @@ class MainWindow(QMainWindow):
     def _open_document(self, doc_id: int) -> None:
         """Load a document's newest text into the editor, in live mode."""
         self._save_current_note()     # the OUTGOING document's notes
+        # A departure photograph belongs to ONE document's excursion:
+        # carrying it across an open would send a later Newest click to
+        # another essay's coordinates.
+        self._live_departure = None
         self._current_doc = self._store.get_document(doc_id)
         self._record_recent(doc_id)   # feeds File ▸ Recent
         self._go_live()
@@ -1767,8 +1993,22 @@ class MainWindow(QMainWindow):
             return
         self._navigating = True
         try:
-            # Leaving live mode: capture unsaved words FIRST, so replacing
-            # the editor's content with history cannot lose anything.
+            # Leaving live mode: photograph WHERE we are leaving from —
+            # scroll and cursor — BEFORE anything else can go wrong.  A
+            # trip into history is an excursion: when the traveler
+            # clicks Newest, no diff-mapping can know where they started
+            # (the passage they left may not even EXIST in older
+            # drafts), but this memory does, exactly.  The belt-and-
+            # braces guard (flag OR an editable editor) exists because a
+            # stale photograph sends every return to the WRONG trip's
+            # spot — the 'each return lands one test behind' report.
+            if self._is_live or not self._editor.isReadOnly():
+                self._live_departure = (
+                    self._editor.verticalScrollBar().value(),
+                    self._editor.textCursor().position(),
+                )
+            # Then capture unsaved words, so replacing the editor's
+            # content with history cannot lose anything.
             if self._is_live:
                 self._commit_live_text()
 
@@ -1786,18 +2026,54 @@ class MainWindow(QMainWindow):
             # to page one at every step).
             from PyQt6.QtCore import QTimer
 
-            # Where should the view sit after the step?  The document's
-            # END is the cusp of its history — essays grow at the tail,
-            # so that is where the changes show as you step.  Rule:
-            #   * stepping IN from live, or stepping while already at
-            #     the end -> pin to the end (None = "the end");
-            #   * but if you scrolled elsewhere to watch a particular
-            #     passage, further steps hold your place there.
+            # Where should the view sit after the step?
+            #   * arriving at NEWEST -> back exactly where the live
+            #     document was left (the departure photograph above):
+            #     the round trip live -> history -> Newest always ends
+            #     where it began, even when the passage being written
+            #     did not exist in the drafts just visited;
+            #   * at the document's END -> stay pinned to the end (the
+            #     cusp of the history, where essays grow — stepping
+            #     back plays the growth in reverse);
+            #   * anywhere ELSE -> hold the PASSAGE, not the pixels.
+            #     A raw scrollbar value lies across revisions (older
+            #     drafts have different text above the same passage —
+            #     the bug where "The key things I take…" became "in
+            #     the temple. This"), so the anchor is the LINE in the
+            #     middle of the view, mapped by content into the target
+            #     revision (corresponding_line) and re-centered there.
+            target_text = self._store.get_text(rev.id)
             bar = self._editor.verticalScrollBar()
             at_end = bar.value() >= bar.maximum() - 2
-            self._pending_scroll = (None if self._is_live or at_end
-                                    else bar.value())
-            self._editor.set_text_quietly(self._store.get_text(rev.id))
+            departure = getattr(self, "_live_departure", None)
+            if live and departure is not None:
+                self._pending_scroll = ("live", departure)
+            elif at_end:
+                self._pending_scroll = None
+            else:
+                from PyQt6.QtCore import QPoint
+
+                midpoint = QPoint(5, self._editor.viewport().height() // 2)
+                mid_cursor = self._editor.cursorForPosition(midpoint)
+                watched = mid_cursor.blockNumber()
+                # Three coordinates make the hold exact:
+                #   * the line, mapped by content into the target text;
+                #   * the offset WITHIN it — an essay paragraph can fill
+                #     the whole screen (one block!), and anchoring to
+                #     its start alone snapped every step to word one of
+                #     it (the 'word 1,940' screenshots);
+                #   * the line's on-screen HEIGHT, so the restore puts
+                #     it back at the very same pixels.  Re-centering
+                #     instead rounded half a line into a whole-line
+                #     creep at the top of the document.
+                self._pending_scroll = (
+                    "line",
+                    corresponding_line(
+                        self._editor.toPlainText(), target_text, watched),
+                    mid_cursor.positionInBlock(),
+                    self._editor.cursorRect(mid_cursor).top(),
+                )
+            self._editor.set_text_quietly(target_text)
 
             # Twice on purpose: once now (best effort), and once after
             # the event loop lets the new text finish laying out — at
@@ -1807,6 +2083,7 @@ class MainWindow(QMainWindow):
             # bound method (not a closure): PyQt ties the timer to this
             # window's lifetime, so a window closed before the timer
             # fires cancels it instead of crashing on dead widgets.
+            self._restore_tries = 0       # fresh retry budget per step
             self._restore_history_scroll()
             QTimer.singleShot(0, self._restore_history_scroll)
             self._editor.setReadOnly(not live)
@@ -1839,8 +2116,46 @@ class MainWindow(QMainWindow):
             self._editor.clear_focus_lines()
             self._refresh_outline()
             self._apply_age_colors()
+            # And the history view gets its own light: a quiet wash on
+            # the words that have since been changed.
+            self._apply_history_change_tint(live)
         finally:
             self._navigating = False
+
+    def _apply_history_change_tint(self, live: bool) -> None:
+        """While time traveling, wash the words of the viewed old
+        version that do NOT survive into the newest text — the material
+        that has since been rewritten or removed.  The farther back the
+        slider goes, the more of the page carries the wash: a quiet map
+        of how much the essay has moved since that day.
+
+        Only runs in history mode, where the ExtraSelections channel is
+        otherwise idle (age colors are a live-mode feature).  The wash
+        is wheat — kin to the amber history border — with a dark-theme
+        counterpart, and touches only the background so the words stay
+        perfectly readable."""
+        if live or not self._revisions:
+            return                     # live mode: age colors own the channel
+        old_text = self._editor.toPlainText()
+        newest_text = self._store.get_text(self._revisions[-1].id)
+        color = (CHANGED_WASH_DARK if self._dark_mode
+                 else CHANGED_WASH_LIGHT)
+        doc = self._editor.document()
+        limit = doc.characterCount() - 1   # clamp: QTextDocument's end
+        selections = []
+        for start, end in changed_word_spans(old_text, newest_text):
+            cursor = QTextCursor(doc)
+            cursor.setPosition(min(start, limit))
+            cursor.setPosition(min(end, limit),
+                               QTextCursor.MoveMode.KeepAnchor)
+            fmt = QTextCharFormat()
+            fmt.setBackground(color)
+            sel = QTextEdit.ExtraSelection()
+            sel.cursor = cursor
+            sel.format = fmt
+            selections.append(sel)
+        self._editor.setExtraSelections(
+            selections + self._read_light_selections())
 
     def _refresh_title_header(self) -> None:
         """The serif title header also announces WHICH state of the
@@ -1867,13 +2182,75 @@ class MainWindow(QMainWindow):
 
     def _restore_history_scroll(self) -> None:
         """Re-apply the view position noted before a history step (see
-        _on_timeline_moved; None means "the end of the document").
-        Runs immediately AND via a 0 ms timer once layout has settled
-        and the scrollbar's true maximum exists."""
+        _on_timeline_moved) or a Read Aloud start.  _pending_scroll
+        speaks three dialects:
+          * None            -> the end of the document;
+          * an int          -> a raw scrollbar value (Read Aloud: the
+                               text has not changed, so it is exact);
+          * ("live", (v,p)) -> the departure photograph: arriving back
+                               at Newest restores scroll value v and
+                               cursor position p exactly — the text is
+                               the very text that was left, so raw
+                               values are truthful again;
+          * ("line", n, o, y) -> put offset o inside line n back at
+                               viewport height y — the content anchor
+                               used when stepping between revisions.
+                               The offset matters (a screen-filling
+                               paragraph is ONE block; without it every
+                               step snapped to its first word), and the
+                               height matters (re-centering rounded
+                               half a line into a one-line creep at the
+                               top of the document).
+        Runs immediately, via a 0 ms timer, and then RETRIES briefly:
+        QPlainTextEdit lays a long document out lazily, so right after
+        a text swap the scrollbar's maximum is still growing — an
+        exact setValue clamps short unless re-applied once the layout
+        has caught up (the 'returned to the wrong screen' bug)."""
+        from PyQt6.QtCore import QTimer
+
         pos = getattr(self, "_pending_scroll", None)
         bar = self._editor.verticalScrollBar()
-        bar.setValue(bar.maximum() if pos is None
-                     else min(pos, bar.maximum()))
+        retry = False
+        if pos is None:
+            bar.setValue(bar.maximum())
+            retry = True                  # the true maximum may not exist yet
+        elif isinstance(pos, tuple) and pos[0] == "live":
+            value, cursor_pos = pos[1]
+            doc = self._editor.document()
+            cursor = self._editor.textCursor()
+            cursor.setPosition(min(cursor_pos, doc.characterCount() - 1))
+            self._editor.setTextCursor(cursor)   # ensures visibility…
+            bar.setValue(min(value, bar.maximum()))  # …then exact frame
+            retry = bar.maximum() < value
+        elif isinstance(pos, tuple):
+            doc = self._editor.document()
+            number = max(0, min(pos[1], doc.blockCount() - 1))
+            offset = pos[2] if len(pos) > 2 else 0
+            anchor_y = pos[3] if len(pos) > 3 else None
+            block = doc.findBlockByNumber(number)
+            # The (visible, read-only) cursor rides along at the
+            # watched spot — so the traveler always sees where the
+            # anchor believes they are.
+            cursor = QTextCursor(block)
+            cursor.setPosition(block.position()
+                               + min(offset, max(block.length() - 2, 0)))
+            self._editor.setTextCursor(cursor)
+            self._editor.centerCursor()       # first, get it on screen…
+            if anchor_y is not None:
+                # …then slide it to the very height it occupied before
+                # the step, in whole visual lines (the scrollbar's
+                # unit).  This is what makes the hold pixel-faithful.
+                rect = self._editor.cursorRect()
+                line_height = max(1, rect.height())
+                delta = round((rect.top() - anchor_y) / line_height)
+                if delta:
+                    bar.setValue(bar.value() + delta)
+        else:
+            bar.setValue(min(pos, bar.maximum()))
+            retry = bar.maximum() < pos
+        if retry and getattr(self, "_restore_tries", 0) < 20:
+            self._restore_tries = getattr(self, "_restore_tries", 0) + 1
+            QTimer.singleShot(15, self._restore_history_scroll)
 
     def _apply_font_family(self, family: str) -> None:
         """Dress the editor in the chosen typeface; the notes pane
@@ -1932,6 +2309,94 @@ class MainWindow(QMainWindow):
                     ))
                 menu.insertSeparator(first)
         menu.exec(self._notes.viewport().mapToGlobal(pos))
+
+    # ------------------------------------------------------------ theme --
+
+    def _apply_theme(self, dark: bool) -> None:
+        """Dress the whole program light or dark, LIVE (Settings box).
+
+        Dark mode = Qt's Fusion style with a hand-built dark palette
+        (identical on Windows and Ubuntu) plus dark counterparts for
+        every surface we color ourselves: the title banner, the notes
+        tint, and the history-view amber.  Unchecking restores the
+        platform's own style, captured before we ever touched it."""
+        from PyQt6.QtGui import QPalette
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        self._dark_mode = dark
+        if dark:
+            app.setStyle("Fusion")
+            palette = QPalette()
+            roles = QPalette.ColorRole
+            for role, color in (
+                (roles.Window, "#2b2d31"), (roles.WindowText, "#e4e6e9"),
+                (roles.Base, "#232428"), (roles.AlternateBase, "#2b2d31"),
+                (roles.Text, "#e4e6e9"), (roles.Button, "#2b2d31"),
+                (roles.ButtonText, "#e4e6e9"), (roles.BrightText, "#ffffff"),
+                (roles.Highlight, "#2f6fce"),
+                (roles.HighlightedText, "#ffffff"),
+                (roles.ToolTipBase, "#3a3d42"),
+                (roles.ToolTipText, "#e4e6e9"),
+                (roles.PlaceholderText, "#8a8f98"),
+                (roles.Link, "#6fa8ff"),
+            ):
+                palette.setColor(role, QColor(color))
+            palette.setColor(QPalette.ColorGroup.Disabled,
+                             roles.Text, QColor("#6b6f76"))
+            palette.setColor(QPalette.ColorGroup.Disabled,
+                             roles.ButtonText, QColor("#6b6f76"))
+            app.setPalette(palette)
+            self._title_label.setStyleSheet(
+                "QLabel { font-family: Georgia, 'Times New Roman', serif;"
+                "  font-size: 15pt; font-weight: bold;"
+                "  color: #9fc0e8; background: #202226;"
+                "  padding: 5px 10px; border-bottom: 1px solid #3a3d42; }")
+            self._notes.setStyleSheet(
+                "QPlainTextEdit { background: #26251f; }"
+                "QPlainTextEdit:focus { border: 2px solid #2f6fce; }")
+            self._editor.setStyleSheet(
+                'QPlainTextEdit[mode="live"]:focus'
+                '  { border: 2px solid #2f6fce; }'
+                'QPlainTextEdit[mode="history"]'
+                '  { border: 2px solid #c98a00; background: #2e2a20; }')
+        else:
+            app.setStyle(self._base_style_name)
+            app.setPalette(self._base_palette)   # the REAL original
+            self._title_label.setStyleSheet(
+                "QLabel { font-family: Georgia, 'Times New Roman', serif;"
+                "  font-size: 15pt; font-weight: bold;"
+                "  color: #1c3a5e; background: #f4f6f8;"
+                "  padding: 5px 10px; border-bottom: 1px solid #c9d2dc; }")
+            self._notes.setStyleSheet(
+                "QPlainTextEdit { background: #fbfaf4; }"
+                "QPlainTextEdit:focus { border: 2px solid #2f6fce; }")
+            self._editor.setStyleSheet(
+                'QPlainTextEdit[mode="live"]:focus'
+                '  { border: 2px solid #2f6fce; }'
+                'QPlainTextEdit[mode="history"]'
+                '  { border: 2px solid #c98a00; background: #fbf6ea; }')
+
+        # The framed side panels (Outline, Doc Info, Library Info):
+        # their stylesheets must carry explicit theme colors, because
+        # a styled widget no longer listens to the palette (the
+        # white-Outline-in-the-dark lesson).
+        for panel in getattr(self, "_panel_frames", []):
+            inner = panel.objectName()
+            if dark:
+                panel.setStyleSheet(
+                    f"#{inner} {{ border: 1px solid #3a4148;"
+                    f" border-radius: 6px; background: #232428;"
+                    f" color: #e4e6e9; }}")
+            else:
+                panel.setStyleSheet(
+                    f"#{inner} {{ border: 1px solid #b9c4d0;"
+                    f" border-radius: 6px; }}")
+
+        # Palette-dependent paintwork follows the new theme.
+        self._editor.markdown_highlighter.rehighlight()
+        self._notes_highlighter.rehighlight()
+        self._apply_age_colors()
 
     def _set_edit_mode_visuals(self, live: bool) -> None:
         """Repaint the editor's mode border (see the stylesheet where

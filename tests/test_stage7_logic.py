@@ -102,3 +102,90 @@ def test_section_bounds_leading_text():
 def test_section_bounds_no_headings():
     text = "plain\nprose\nonly\n"
     assert section_bounds(text, 1) == (0, 3)   # whole text, one section
+
+
+# -- changed-word spans (history view wash) ---------------------------------
+
+def _spans(old, new):
+    from wordvault.editor.age_colors import changed_word_spans
+    return changed_word_spans(old, new)
+
+
+def test_identical_texts_have_no_changed_spans():
+    text = "The quick brown fox jumps.\n\nOver the lazy dog."
+    assert _spans(text, text) == []
+
+
+def test_one_reworded_word_is_washed():
+    old = "The quick brown fox jumps."
+    new = "The swift brown fox jumps."
+    spans = _spans(old, new)
+    assert len(spans) == 1
+    start, end = spans[0]
+    assert old[start:end] == "quick"
+
+
+def test_deleted_sentence_is_washed_in_the_old_version():
+    old = "Keep this. Drop all of this entirely. Keep that."
+    new = "Keep this. Keep that."
+    spans = _spans(old, new)
+    washed = " ".join(old[s:e] for s, e in spans)
+    assert "Drop all of this entirely." in washed
+    assert "Keep this." not in washed
+
+
+def test_adjacent_changes_merge_into_one_wash():
+    old = "alpha beta gamma delta"
+    new = "alpha X Y delta"
+    spans = _spans(old, new)
+    assert len(spans) == 1
+    start, end = spans[0]
+    assert old[start:end] == "beta gamma"
+
+
+def test_farther_back_washes_more():
+    """The user's own description of the feature: stepping farther
+    back, more of the old page should carry the wash."""
+    newest = "one two three four five six"
+    mid = "one two three four CHANGED six"
+    oldest = "one OLD three ALSO CHANGED six"
+    area = lambda t: sum(e - s for s, e in _spans(t, newest))
+    assert 0 < area(mid) < area(oldest)
+
+
+# -- corresponding_line (view holds the passage across revisions) -----------
+
+def _line(old, new, n):
+    from wordvault.editor.age_colors import corresponding_line
+    return corresponding_line(old, new, n)
+
+
+def test_surviving_line_maps_to_its_twin():
+    old = "aaa\nbbb\nwatched line\nddd"
+    new = "NEW OPENING\nmore new\naaa\nbbb\nwatched line\nddd"
+    # Two lines were added above: the watched line moved from 2 to 4.
+    assert _line(old, new, 2) == 4
+    assert new.splitlines()[_line(old, new, 2)] == "watched line"
+
+
+def test_removed_lines_above_shift_the_map_up():
+    old = "one\ntwo\nthree\nwatched\nfive"
+    new = "one\nwatched\nfive"
+    assert new.splitlines()[_line(old, new, 3)] == "watched"
+
+
+def test_rewritten_line_maps_into_its_replacement():
+    old = "same\nold wording here\nsame2"
+    new = "same\ncompletely new words\nsame2"
+    assert _line(old, new, 1) == 1
+
+
+def test_deleted_line_lands_on_the_seam():
+    old = "keep\ngone entirely\nkeep2"
+    new = "keep\nkeep2"
+    assert _line(old, new, 1) in (0, 1)   # nearest surviving ground
+
+
+def test_out_of_range_and_empty_are_safe():
+    assert _line("", "anything", 5) == 0
+    assert _line("a\nb", "a\nb", 99) == 1
