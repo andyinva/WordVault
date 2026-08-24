@@ -569,8 +569,15 @@ plainer face), how far
 back **File ▸ Recent** remembers (25 unless you say
 otherwise), whether WordVault **reopens the last document at
 startup** (on by default), **Dark mode** (the whole window, applied
-the moment you click OK — same dress on Windows and Ubuntu), and
-**library encryption**.
+the moment you click OK — same dress on Windows and Ubuntu), the
+**Enter key** (by default Enter *starts a new paragraph*: it adds the
+blank line itself, leaving the cursor ready to write on — in the
+vault a paragraph is a line and a blank line makes the next one, so
+this is one keystroke doing exactly what two used to; Shift+Enter is
+always a plain single return, lists still continue their markers, and
+"Plain return" restores the old behavior — note that a first-line
+*indent* is a printing matter, set by `first_line_indent` in a
+`.wvfmt`, never by tabs in the text), and **library encryption**.
 
 ### Personal extensions
 

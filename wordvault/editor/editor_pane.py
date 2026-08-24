@@ -93,6 +93,9 @@ class EditorPane(QPlainTextEdit):
         # Learned corrections for as-you-type repair of repeated errors:
         # dict typed(lower) -> corrected, or None = feature off.
         self._autocorrect_lookup = None
+        # Enter starts a new paragraph (adds the blank line) unless the
+        # Settings dialog says plain returns — see keyPressEvent.
+        self._paragraph_return = True
 
         # Optional line-number gutter (View menu toggle).
         self._line_numbers_on = False
@@ -268,12 +271,27 @@ class EditorPane(QPlainTextEdit):
         "> " line starts the next line with the same marker; Enter on an
         EMPTY marker line ends the list by clearing the marker.
 
+        Paragraph return (Settings, on by default): outside lists, a
+        plain Enter adds the blank line too — in the vault a paragraph
+        IS a line and a blank line is what makes the next one, so one
+        keystroke leaves the cursor ready for the next paragraph.
+        Shift+Enter is always a single plain return, in either mode
+        (it also replaces Qt's default Shift+Enter, which inserts an
+        invisible line-separator character that would put two visual
+        lines inside one paragraph block).
+
         Also the auto-correction hook: finishing a word (space,
         punctuation, or Enter) first repairs it if it is a learned typo."""
         is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
         if is_enter or (event.text() and
                         event.text() in self.keyPressEvent_completers):
             self._maybe_autocorrect()
+
+        if (is_enter and not self.isReadOnly()
+                and event.modifiers() == Qt.KeyboardModifier.ShiftModifier):
+            self.textCursor().insertText("\n")
+            self.ensureCursorVisible()
+            return
 
         if is_enter and not event.modifiers():
             cursor = self.textCursor()
@@ -295,7 +313,25 @@ class EditorPane(QPlainTextEdit):
                     super().keyPressEvent(event)
                     self.textCursor().insertText(prefix)
                     return
+            if self._paragraph_return and not self.isReadOnly():
+                cursor = self.textCursor()
+                # On an already-empty line one newline is enough — the
+                # writer is spacing, not starting a paragraph.
+                gap = "\n" if not cursor.block().text().strip() else "\n\n"
+                cursor.insertText(gap)
+                self.ensureCursorVisible()
+                return
         super().keyPressEvent(event)
+
+    # -- paragraph return (Settings) -----------------------------------------
+
+    def set_paragraph_return(self, enabled: bool) -> None:
+        """Enter adds the blank line (True, the default) or is a plain
+        return (False).  See keyPressEvent."""
+        self._paragraph_return = bool(enabled)
+
+    def paragraph_return(self) -> bool:
+        return self._paragraph_return
 
     # -- line numbers (View menu toggle) ------------------------------------
 

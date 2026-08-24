@@ -241,6 +241,8 @@ class MainWindow(QMainWindow):
         self._apply_font_family(
             str(self._settings.value("font_family", "")))
         self._apply_notes_font()      # notes overrides, when chosen
+        self._editor.set_paragraph_return(
+            self._settings.value("paragraph_return", True, type=bool))
         # Restore the persisted View toggles.
         if self._settings.value("line_numbers", False, type=bool):
             self._line_numbers_action.setChecked(True)
@@ -1169,6 +1171,7 @@ class MainWindow(QMainWindow):
             notes_size=self._notes.font().pointSize(),
             reading_speed=self._reading_speed_percent(),
             dark_mode=getattr(self, "_dark_mode", False),
+            paragraph_return=self._editor.paragraph_return(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1191,6 +1194,8 @@ class MainWindow(QMainWindow):
         self._settings.setValue("author", dialog.author)
         self._settings.setValue("recent_limit", dialog.recent_limit)
         self._settings.setValue("reopen_last", dialog.reopen_last)
+        self._editor.set_paragraph_return(dialog.paragraph_return)
+        self._settings.setValue("paragraph_return", dialog.paragraph_return)
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).

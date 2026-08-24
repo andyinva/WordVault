@@ -53,6 +53,7 @@ class SettingsDialog(QDialog):
         notes_size: int = 10,
         reading_speed: int = 100,
         dark_mode: bool = False,
+        paragraph_return: bool = True,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -120,6 +121,21 @@ class SettingsDialog(QDialog):
         self._reopen_box.setChecked(reopen_last)
 
         # Dark mode: applied to the whole window, immediately on OK.
+        # The Enter key: in the vault a paragraph is a line and a blank
+        # line makes the next one, so Enter can add that blank line
+        # itself — one keystroke and the cursor is ready for the next
+        # paragraph.  Shift+Enter is always a plain single return.
+        from PyQt6.QtWidgets import QComboBox
+
+        self._enter_combo = QComboBox(self)
+        self._enter_combo.addItem(
+            "Starts a new paragraph (adds the blank line)")
+        self._enter_combo.addItem("Plain return")
+        self._enter_combo.setCurrentIndex(0 if paragraph_return else 1)
+        self._enter_combo.setToolTip(
+            "What the Enter key does while writing. Shift+Enter is "
+            "always a plain single return, in either mode.")
+
         self._dark_box = QCheckBox("Dark mode", self)
         self._dark_box.setChecked(dark_mode)
 
@@ -151,6 +167,7 @@ class SettingsDialog(QDialog):
         form.addRow("Notes font:", self._notes_font_combo)
         form.addRow("Notes font size:", self._notes_size_spin)
         form.addRow("Reading speed:", self._speed_spin)
+        form.addRow("Enter key:", self._enter_combo)
         form.addRow(self._dark_box)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
@@ -202,6 +219,10 @@ class SettingsDialog(QDialog):
     @property
     def reading_speed(self) -> int:
         return self._speed_spin.value()
+
+    @property
+    def paragraph_return(self) -> bool:
+        return self._enter_combo.currentIndex() == 0
 
     @property
     def dark_mode(self) -> bool:

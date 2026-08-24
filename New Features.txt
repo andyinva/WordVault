@@ -1,5 +1,5 @@
 1. Have the ability to use the AND or the OR in search.
-2. 
+2. I need to rethink how I do new paragraphs. Maybe a setting with a few different choices. A return with tab or x number of spaces. I return with new line. The idea is to hit the return and be ready for the next paragraph. 
 3. How well does the Word Vault Handel an instantaneous power outage. 
 4. Would it be possible to create a single file installer. 
 5. plan for new features: When looking for new features look for things that make your writing more convenient and intuitive. 
