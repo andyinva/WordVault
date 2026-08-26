@@ -577,7 +577,15 @@ this is one keystroke doing exactly what two used to; Shift+Enter is
 always a plain single return, lists still continue their markers, and
 "Plain return" restores the old behavior — note that a first-line
 *indent* is a printing matter, set by `first_line_indent` in a
-`.wvfmt`, never by tabs in the text), and **library encryption**.
+`.wvfmt`, never by tabs in the text), **Disabled keys** (check any of
+Pg Up, Pg Dn, Home, End, or Insert and the editor simply ignores that
+key — for keyboards where a stray press keeps throwing the view
+across the document, or where Insert silently flips overwrite mode;
+the keys still work everywhere else in the program), **Highlight the
+line being edited** (a gentle full-width wash under the cursor's line
+— a calm blue-gray on the white page, its counterpart in dark mode —
+on by default, and it politely steps aside in history views), and
+**library encryption**.
 
 ### Personal extensions
 

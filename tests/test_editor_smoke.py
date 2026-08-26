@@ -658,10 +658,20 @@ def test_age_colors_toggle_no_crash_and_clear(window_with_sections):
     # A second revision so there ARE two ages to tint.
     window._editor.setPlainText(DOC_TEXT + "delta added later\n")
     window._autosave()
+    def tints(w):
+        """Age tints only — the current-line light (a full-width
+        background, Settings-on by default) rides in the same channel
+        and is not what this test is about."""
+        from PyQt6.QtGui import QTextFormat
+
+        return [s for s in w._editor.extraSelections()
+                if not s.format.hasProperty(
+                    QTextFormat.Property.FullWidthSelection)]
+
     window._age_action.setChecked(True)
-    assert len(window._editor.extraSelections()) >= 1   # old lines tinted
+    assert len(tints(window)) >= 1                      # old lines tinted
     window._age_action.setChecked(False)
-    assert window._editor.extraSelections() == []
+    assert tints(window) == []
 
 
 def test_outline_pane_follows_document(window_with_sections):

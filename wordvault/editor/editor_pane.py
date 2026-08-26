@@ -71,6 +71,24 @@ class EditorPane(QPlainTextEdit):
         font.setPointSize(12)
         self.setFont(font)
 
+        # The vertical scrollbar is ALWAYS visible (not Qt's default
+        # appear-as-needed): the page never shifts width when a document
+        # grows past one screen, and the bar doubles as a constant
+        # at-a-glance "where am I in the document" gauge.
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # And always at FULL dress: Windows 11 draws scrollbars as a
+        # slim sliver that only grows arrows under the mouse.  Drawing
+        # this one bar with the Fusion style gives the classic full
+        # scrollbar — handle, arrow buttons, full width, hover or not —
+        # and Fusion follows the palette, so dark mode dresses it too.
+        from PyQt6.QtWidgets import QStyleFactory
+
+        fusion = QStyleFactory.create("Fusion")
+        if fusion is not None:
+            fusion.setParent(self)        # keep it alive with the editor
+            self.verticalScrollBar().setStyle(fusion)
+
         # Single-shot idle timer: every text change restarts it, so it only
         # fires after IDLE_MS of true silence.
         self._idle_timer = QTimer(self)
@@ -96,6 +114,22 @@ class EditorPane(QPlainTextEdit):
         # Enter starts a new paragraph (adds the blank line) unless the
         # Settings dialog says plain returns — see keyPressEvent.
         self._paragraph_return = True
+        # Keys the writer has chosen to silence (Settings ▸ Disabled
+        # keys): a stray Page Up mid-sentence throws the view across
+        # the document, so these are swallowed before Qt sees them.
+        self._disabled_keys: set = set()
+
+        # Current-line light (Settings): a gentle full-width tint under
+        # the line the cursor is on — visible in the corner of the eye,
+        # never shouting.  Painted UNDER every other decoration (age
+        # colors, karaoke, spelling) by riding along with whatever
+        # ExtraSelections the window sets; see setExtraSelections.
+        self._line_light_on = False
+        self._base_selections: list = []
+        from PyQt6.QtGui import QColor
+
+        self._line_light_tint = QColor("#eef3f9")   # light-mode default
+        self.cursorPositionChanged.connect(self._refresh_line_light)
 
         # Optional line-number gutter (View menu toggle).
         self._line_numbers_on = False
@@ -282,6 +316,10 @@ class EditorPane(QPlainTextEdit):
 
         Also the auto-correction hook: finishing a word (space,
         punctuation, or Enter) first repairs it if it is a learned typo."""
+        if event.key() in self._disabled_keys:
+            event.accept()                # silenced by the writer
+            return
+
         is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
         if is_enter or (event.text() and
                         event.text() in self.keyPressEvent_completers):
@@ -332,6 +370,66 @@ class EditorPane(QPlainTextEdit):
 
     def paragraph_return(self) -> bool:
         return self._paragraph_return
+
+    # -- current-line light (Settings) ---------------------------------------
+
+    def set_line_light(self, on: bool) -> None:
+        """Turn the current-line tint on or off (Settings)."""
+        self._line_light_on = bool(on)
+        self._apply_with_line_light()
+
+    def line_light(self) -> bool:
+        return self._line_light_on
+
+    def setExtraSelections(self, selections) -> None:  # noqa: N802 (Qt)
+        """Every decoration in the editor flows through here (age
+        colors, karaoke light, history wash).  The base list is kept so
+        the line light can be woven UNDERNEATH it — prepended, so the
+        other decorations always win where they overlap — and refreshed
+        on every cursor move without disturbing them."""
+        self._base_selections = list(selections)
+        self._apply_with_line_light()
+
+    def set_line_light_color(self, color) -> None:
+        """The tint itself — set by the window's theme applier (a calm
+        blue-gray wash in light mode, its counterpart in dark).  Fixed
+        colors, not derived from the palette: deriving from the
+        platform's base color made the light INVISIBLE on Windows
+        themes whose base is already that same light gray."""
+        from PyQt6.QtGui import QColor
+
+        self._line_light_tint = QColor(color)
+        self._apply_with_line_light()
+
+    def _apply_with_line_light(self) -> None:
+        extra = list(self._base_selections)
+        if self._line_light_on and not self.isReadOnly():
+            from PyQt6.QtGui import QTextFormat
+            from PyQt6.QtWidgets import QTextEdit
+
+            sel = QTextEdit.ExtraSelection()
+            sel.format.setBackground(self._line_light_tint)
+            sel.format.setProperty(
+                QTextFormat.Property.FullWidthSelection, True)
+            cursor = self.textCursor()
+            cursor.clearSelection()
+            sel.cursor = cursor
+            extra.insert(0, sel)          # underneath everything else
+        super().setExtraSelections(extra)
+
+    def _refresh_line_light(self) -> None:
+        if self._line_light_on:
+            self._apply_with_line_light()
+
+    # -- disabled keys (Settings) --------------------------------------------
+
+    def set_disabled_keys(self, keys) -> None:
+        """Silence these Qt key codes inside the editor (Settings ▸
+        Disabled keys).  Pass an empty set to restore every key."""
+        self._disabled_keys = set(keys)
+
+    def disabled_keys(self) -> set:
+        return set(self._disabled_keys)
 
     # -- line numbers (View menu toggle) ------------------------------------
 

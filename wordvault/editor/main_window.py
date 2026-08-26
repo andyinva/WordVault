@@ -243,6 +243,10 @@ class MainWindow(QMainWindow):
         self._apply_notes_font()      # notes overrides, when chosen
         self._editor.set_paragraph_return(
             self._settings.value("paragraph_return", True, type=bool))
+        self._apply_disabled_keys(
+            str(self._settings.value("disabled_keys", "")))
+        self._editor.set_line_light(
+            self._settings.value("line_light", True, type=bool))
         # Restore the persisted View toggles.
         if self._settings.value("line_numbers", False, type=bool):
             self._line_numbers_action.setChecked(True)
@@ -374,7 +378,13 @@ class MainWindow(QMainWindow):
         # amber border + parchment tint while viewing an OLD version
         # (read-only: select and copy, but the past cannot be edited —
         # the timeline's highlighted Newest/Restore buttons lead back).
+        # The live page is explicitly WHITE — not the platform's base
+        # color, which on some Windows themes is already a light gray
+        # and swallowed the current-line light whole (Andrew's "I can
+        # not see the tint" report).  The page is plain; the line
+        # light is the only tint on it.
         self._editor.setStyleSheet(
+            'QPlainTextEdit[mode="live"] { background: #ffffff; }'
             'QPlainTextEdit[mode="live"]:focus'
             '  { border: 2px solid #2f6fce; }'
             'QPlainTextEdit[mode="history"]'
@@ -1152,6 +1162,24 @@ class MainWindow(QMainWindow):
         HelpDialog(self, document=_UPDATES_FILE,
                    title="Getting Updates").exec()
 
+    #: Settings names -> Qt key codes for the Disabled-keys feature.
+    _SILENCEABLE_KEYS = {
+        "pgup": Qt.Key.Key_PageUp,
+        "pgdn": Qt.Key.Key_PageDown,
+        "home": Qt.Key.Key_Home,
+        "end": Qt.Key.Key_End,
+        "insert": Qt.Key.Key_Insert,
+    }
+
+    def _apply_disabled_keys(self, names_csv: str) -> None:
+        """Silence the named keys in the editor (comma-separated names
+        as persisted in QSettings; unknown names are ignored)."""
+        names = [n for n in names_csv.split(",") if n]
+        self._disabled_key_names = tuple(
+            n for n in names if n in self._SILENCEABLE_KEYS)
+        self._editor.set_disabled_keys(
+            self._SILENCEABLE_KEYS[n] for n in self._disabled_key_names)
+
     def _on_settings(self) -> None:
         """Open Settings; apply and persist whatever was chosen."""
         from PyQt6.QtWidgets import QDialog
@@ -1172,6 +1200,8 @@ class MainWindow(QMainWindow):
             reading_speed=self._reading_speed_percent(),
             dark_mode=getattr(self, "_dark_mode", False),
             paragraph_return=self._editor.paragraph_return(),
+            disabled_keys=getattr(self, "_disabled_key_names", ()),
+            line_light=self._editor.line_light(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1196,6 +1226,11 @@ class MainWindow(QMainWindow):
         self._settings.setValue("reopen_last", dialog.reopen_last)
         self._editor.set_paragraph_return(dialog.paragraph_return)
         self._settings.setValue("paragraph_return", dialog.paragraph_return)
+        self._apply_disabled_keys(",".join(dialog.disabled_keys))
+        self._settings.setValue("disabled_keys",
+                                ",".join(dialog.disabled_keys))
+        self._editor.set_line_light(dialog.line_light)
+        self._settings.setValue("line_light", dialog.line_light)
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).
@@ -2361,10 +2396,12 @@ class MainWindow(QMainWindow):
                 "QPlainTextEdit { background: #26251f; }"
                 "QPlainTextEdit:focus { border: 2px solid #2f6fce; }")
             self._editor.setStyleSheet(
+                'QPlainTextEdit[mode="live"] { background: #232428; }'
                 'QPlainTextEdit[mode="live"]:focus'
                 '  { border: 2px solid #2f6fce; }'
                 'QPlainTextEdit[mode="history"]'
                 '  { border: 2px solid #c98a00; background: #2e2a20; }')
+            self._editor.set_line_light_color(QColor("#2c3038"))
         else:
             app.setStyle(self._base_style_name)
             app.setPalette(self._base_palette)   # the REAL original
@@ -2377,10 +2414,12 @@ class MainWindow(QMainWindow):
                 "QPlainTextEdit { background: #fbfaf4; }"
                 "QPlainTextEdit:focus { border: 2px solid #2f6fce; }")
             self._editor.setStyleSheet(
+                'QPlainTextEdit[mode="live"] { background: #ffffff; }'
                 'QPlainTextEdit[mode="live"]:focus'
                 '  { border: 2px solid #2f6fce; }'
                 'QPlainTextEdit[mode="history"]'
                 '  { border: 2px solid #c98a00; background: #fbf6ea; }')
+            self._editor.set_line_light_color(QColor("#eef3f9"))
 
         # The framed side panels (Outline, Doc Info, Library Info):
         # their stylesheets must carry explicit theme colors, because

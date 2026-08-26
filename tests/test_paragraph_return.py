@@ -93,3 +93,108 @@ def test_setting_round_trips_through_the_dialog(qapp):
     assert dialog.paragraph_return is False
     dialog._enter_combo.setCurrentIndex(0)
     assert dialog.paragraph_return is True
+
+
+# -- disabled keys (Settings ▸ Disabled keys) --------------------------------
+
+def test_disabled_page_keys_are_swallowed(pane):
+    """Andrew's keyboard: Pg Up / Pg Dn sit where stray fingers land —
+    silenced, a press moves neither cursor nor view."""
+    pane.set_disabled_keys({Qt.Key.Key_PageUp, Qt.Key.Key_PageDown})
+    pane.setPlainText("\n".join(f"line {i}" for i in range(200)))
+    cursor = pane.textCursor()
+    cursor.setPosition(0)
+    pane.setTextCursor(cursor)
+    QTest.keyClick(pane, Qt.Key.Key_PageDown)
+    assert pane.textCursor().position() == 0
+    assert pane.verticalScrollBar().value() == 0
+    # Other keys still work.
+    QTest.keyClick(pane, Qt.Key.Key_Down)
+    assert pane.textCursor().blockNumber() == 1
+
+
+def test_enabled_keys_work_again_when_cleared(pane):
+    pane.set_disabled_keys({Qt.Key.Key_PageDown})
+    pane.setPlainText("\n".join(f"line {i}" for i in range(200)))
+    cursor = pane.textCursor()
+    cursor.setPosition(0)
+    pane.setTextCursor(cursor)
+    pane.set_disabled_keys(set())
+    QTest.keyClick(pane, Qt.Key.Key_PageDown)
+    assert pane.textCursor().position() > 0
+
+
+"""-- current-line light (Settings) ----------------------------------------"""
+
+
+def _lights(pane):
+    from PyQt6.QtGui import QTextFormat
+
+    return [s for s in pane.extraSelections()
+            if s.format.hasProperty(
+                QTextFormat.Property.FullWidthSelection)]
+
+
+def test_line_light_follows_the_cursor(pane):
+    pane.set_line_light(True)
+    pane.setPlainText("first\nsecond\nthird")
+    cursor = pane.textCursor()
+    cursor.setPosition(pane.document().findBlockByNumber(1).position())
+    pane.setTextCursor(cursor)
+    lights = _lights(pane)
+    assert len(lights) == 1
+    assert lights[0].cursor.blockNumber() == 1
+    # And it moves with the cursor.
+    QTest.keyClick(pane, Qt.Key.Key_Down)
+    assert _lights(pane)[0].cursor.blockNumber() == 2
+
+
+def test_line_light_rides_under_other_decorations(pane):
+    """Age colors, karaoke, and the wash all pass through
+    setExtraSelections — the light must join them, underneath, without
+    losing them."""
+    from PyQt6.QtGui import QColor, QTextCharFormat
+    from PyQt6.QtWidgets import QTextEdit
+
+    pane.set_line_light(True)
+    pane.setPlainText("one line")
+    other = QTextEdit.ExtraSelection()
+    other.cursor = pane.textCursor()
+    fmt = QTextCharFormat()
+    fmt.setForeground(QColor("red"))
+    other.format = fmt
+    pane.setExtraSelections([other])
+    selections = pane.extraSelections()
+    assert len(selections) == 2           # the light + the other
+    # The light is FIRST (painted underneath).
+    from PyQt6.QtGui import QTextFormat
+    assert selections[0].format.hasProperty(
+        QTextFormat.Property.FullWidthSelection)
+
+
+def test_line_light_off_leaves_no_trace(pane):
+    pane.set_line_light(False)
+    pane.setPlainText("plain")
+    pane.setExtraSelections([])
+    assert pane.extraSelections() == []
+
+
+def test_line_light_round_trips_through_the_dialog(qapp):
+    from wordvault.editor.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(encrypted=False, idle_seconds=3,
+                            font_size=12, line_light=False)
+    assert dialog.line_light is False
+    dialog._line_light_box.setChecked(True)
+    assert dialog.line_light is True
+
+
+def test_disabled_keys_round_trip_through_the_dialog(qapp):
+    from wordvault.editor.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(encrypted=False, idle_seconds=3,
+                            font_size=12, disabled_keys=("pgup", "pgdn"))
+    assert set(dialog.disabled_keys) == {"pgup", "pgdn"}
+    dialog._key_boxes["pgdn"].setChecked(False)
+    dialog._key_boxes["insert"].setChecked(True)
+    assert set(dialog.disabled_keys) == {"pgup", "insert"}

@@ -54,6 +54,8 @@ class SettingsDialog(QDialog):
         reading_speed: int = 100,
         dark_mode: bool = False,
         paragraph_return: bool = True,
+        disabled_keys: tuple = (),
+        line_light: bool = True,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -136,6 +138,37 @@ class SettingsDialog(QDialog):
             "What the Enter key does while writing. Shift+Enter is "
             "always a plain single return, in either mode.")
 
+        # Disabled keys: keys the writer wants SILENCED in the editor —
+        # a stray Page Up mid-sentence throws the view across the
+        # document, and Insert silently flips overwrite mode.  Only the
+        # editor ignores them; dialogs and lists keep them.
+        from PyQt6.QtWidgets import QHBoxLayout, QWidget
+
+        self._key_boxes = {}
+        keys_row = QWidget(self)
+        keys_layout = QHBoxLayout(keys_row)
+        keys_layout.setContentsMargins(0, 0, 0, 0)
+        for name, label in (("pgup", "Pg Up"), ("pgdn", "Pg Dn"),
+                            ("home", "Home"), ("end", "End"),
+                            ("insert", "Insert")):
+            box = QCheckBox(label, keys_row)
+            box.setChecked(name in disabled_keys)
+            self._key_boxes[name] = box
+            keys_layout.addWidget(box)
+        keys_layout.addStretch(1)
+        keys_row.setToolTip(
+            "Checked keys are ignored while typing in the editor — "
+            "for keyboards where a stray press keeps sending the view "
+            "flying. They still work everywhere else.")
+
+        self._line_light_box = QCheckBox(
+            "Highlight the line being edited", self)
+        self._line_light_box.setChecked(line_light)
+        self._line_light_box.setToolTip(
+            "A gentle full-width wash under the cursor's line — the "
+            "eye finds its place at a glance. A calm blue-gray on the "
+            "white page; its counterpart in dark mode.")
+
         self._dark_box = QCheckBox("Dark mode", self)
         self._dark_box.setChecked(dark_mode)
 
@@ -168,6 +201,8 @@ class SettingsDialog(QDialog):
         form.addRow("Notes font size:", self._notes_size_spin)
         form.addRow("Reading speed:", self._speed_spin)
         form.addRow("Enter key:", self._enter_combo)
+        form.addRow("Disabled keys:", keys_row)
+        form.addRow(self._line_light_box)
         form.addRow(self._dark_box)
         form.addRow("Recent list remembers:", self._recent_spin)
         form.addRow(self._reopen_box)
@@ -223,6 +258,16 @@ class SettingsDialog(QDialog):
     @property
     def paragraph_return(self) -> bool:
         return self._enter_combo.currentIndex() == 0
+
+    @property
+    def disabled_keys(self) -> tuple:
+        """Names of the keys to silence, e.g. ("pgup", "pgdn")."""
+        return tuple(name for name, box in self._key_boxes.items()
+                     if box.isChecked())
+
+    @property
+    def line_light(self) -> bool:
+        return self._line_light_box.isChecked()
 
     @property
     def dark_mode(self) -> bool:
