@@ -59,6 +59,18 @@ design (see the User Guide, Part I).
   skeleton, a sermon outline, a chapter opening — plain .md files in
   a templates folder, personal copies editable like print formats.
 
+## Provenance — showing the work (stage 1 shipped)
+
+- [x] **Provenance Report** — Document ▸ Provenance Report: sessions,
+  growth, writing time, arrivals, corrections, from existing vault
+  data. *(Shipped.)*
+- [ ] **Events log** — a small table recording open/close, print,
+  export, import, restore, and paste sizes, so future reports grow
+  richer from the day it ships.
+- [ ] **Hash chain** — each revision fingerprints the one before it,
+  making the history tamper-evident: the notarized diary, the
+  strongest claim a writer can print.
+
 ## Bigger, but worthy of the list
 
 - [ ] **Copy as formatted** — selection to the clipboard as rich

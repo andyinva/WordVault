@@ -870,6 +870,14 @@ class MainWindow(QMainWindow):
         verses_action.triggered.connect(self._on_shared_verses)
         doc_menu.addAction(verses_action)
 
+        provenance_action = QAction("&Provenance Report…", self)
+        provenance_action.setToolTip(
+            "The document's construction story, assembled from its own "
+            "revision history: sessions, growth, writing time, and the "
+            "corrections made along the way")
+        provenance_action.triggered.connect(self._on_provenance_report)
+        doc_menu.addAction(provenance_action)
+
         # Export As: every way a document leaves the vault, under one
         # roof.  The first three export what is ON SCREEN (a viewed
         # old draft exports as that old draft); .wvdoc carries the
@@ -1864,6 +1872,76 @@ class MainWindow(QMainWindow):
         if errors:
             message += f"\n{errors} file(s) could not be read."
         QMessageBox.information(self, "Refresh Formatting", message)
+
+    def _on_provenance_report(self) -> None:
+        """Document ▸ Provenance Report: the construction story of the
+        open document, assembled from the vault's own record (growth,
+        sessions, labor, corrections — see wordvault/provenance.py),
+        shown for reading and saved as Markdown on request."""
+        if self._current_doc is None:
+            QMessageBox.information(self, "Provenance Report",
+                                    "Open a document first.")
+            return
+        from PyQt6.QtWidgets import QApplication as _QApp
+
+        from wordvault import __version__
+        from wordvault.provenance import build_report, word_count
+
+        _QApp.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            # Every revision's word count — the growth curve.  Hundreds
+            # of small reads; a few seconds for a long-lived essay.
+            revisions = [
+                (r.created_utc, word_count(self._store.get_text(r.id)))
+                for r in self._store.list_revisions(self._current_doc.id)
+            ]
+            report = build_report(
+                title=self._current_doc.title,
+                created_utc=self._current_doc.created_utc,
+                revisions=revisions,
+                editing_seconds=self._store.editing_seconds(
+                    self._current_doc.id),
+                spelling_rows=self._store.spelling_for_document(
+                    self._current_doc.id),
+                program_version=__version__,
+            )
+        finally:
+            _QApp.restoreOverrideCursor()
+
+        from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QPlainTextEdit,
+                                     QPushButton, QVBoxLayout)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(
+            f"Provenance Report — {self._current_doc.title}")
+        dialog.resize(720, 560)
+        layout = QVBoxLayout(dialog)
+        view = QPlainTextEdit(report, dialog)
+        view.setReadOnly(True)
+        layout.addWidget(view)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        save_btn = QPushButton("&Save as Markdown…", dialog)
+
+        def save():
+            from PyQt6.QtWidgets import QFileDialog
+
+            suggested = f"{self._current_doc.title} — provenance.md"
+            path, _f = QFileDialog.getSaveFileName(
+                dialog, "Save Provenance Report", suggested,
+                "Markdown (*.md)")
+            if path:
+                Path(path).write_text(report, encoding="utf-8")
+                self.statusBar().showMessage(f"Report saved: {path}", 6000)
+
+        save_btn.clicked.connect(save)
+        close_btn = QPushButton("Close", dialog)
+        close_btn.clicked.connect(dialog.accept)
+        buttons.addWidget(save_btn)
+        buttons.addWidget(close_btn)
+        layout.addLayout(buttons)
+        dialog.exec()
 
     def _on_formatter(self) -> None:
         """Open (or raise) the Book Formatter — a NON-modal window, so

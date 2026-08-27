@@ -819,6 +819,18 @@ class DocumentStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def spelling_for_document(self, doc_id: int) -> list[tuple]:
+        """(created_utc, typed, corrected) for every correction made
+        while THIS document was open — evidence for the Provenance
+        Report, oldest first."""
+        rows = self._conn.execute(
+            "SELECT created_utc, typed, corrected FROM spelling_log "
+            "WHERE doc_id = ? ORDER BY id",
+            (doc_id,),
+        ).fetchall()
+        return [(r["created_utc"], r["typed"], r["corrected"])
+                for r in rows]
+
     def learned_corrections(self) -> dict[str, str]:
         """typed (lower) -> most recent correction, from every fix the
         author has made by hand or by suggestion.  Powers the as-you-type

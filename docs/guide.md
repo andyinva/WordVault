@@ -587,6 +587,23 @@ line being edited** (a gentle full-width wash under the cursor's line
 on by default, and it politely steps aside in history views), and
 **library encryption**.
 
+### The Provenance Report
+
+**Document ▸ Provenance Report…** assembles the open document's
+construction story from the vault's own record: when it was created,
+every writing session (sittings of revisions, with words at the start
+and end of each), the editing clock's measured hands-on-keys time,
+how the text arrived (typing-sized steps versus large single arrivals
+such as imports and pastes — both reported honestly), and every
+misspelling made and corrected along the way, timestamped. In an age
+when anyone can generate an essay in seconds, this report is a
+writer's way of *showing the work*: human writing grows in bursts and
+plateaus and corrections, and the append-only vault has been keeping
+that evidence all along. Save it as Markdown, keep it beside the
+essay, or hand it to anyone who asks "did you really write this?" —
+every revision it cites remains in the vault, reopenable on the
+timeline.
+
 ### Personal extensions
 
 A copy of WordVault can grow abilities its owner adds by hand. At
