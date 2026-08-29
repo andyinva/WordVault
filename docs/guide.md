@@ -454,6 +454,35 @@ selection rides whatever format you chose: same page, same fonts,
 same headers, just less of the essay — handy for proofing one section
 on paper without spending the whole ream.
 
+Line spacing has two dials, both in the `.wvfmt`: `line_spacing` is a
+multiple of single spacing and takes any decimal (`1.12`, `1.07` —
+as fine as you please), while `line_height_pt` sets the leading
+*exactly*, in points (`line_height_pt = 13.5` — Word's "Exactly"),
+which outranks the multiple and is the finest control there is. Pair
+either with Print Preview to tune by eye without paper.
+
+**File ▸ Format Studio** is where a format gets fitted like a suit:
+pick one of your personal formats and a tall column of its settings
+opens down the left — paper and margins, then font, size, alignment,
+line spacing (both dials), paragraph gaps, and indents for the body,
+headings, and quotes, then the header, footer, and byline templates —
+with the live preview filling the right. Change any dial and, after a
+heartbeat's pause, the pages repaint; the open document poses for the
+fitting (a built-in sample stands in when nothing is open). Every
+change is validated before it touches the preview, and Save writes
+the `.wvfmt` in clean standard form — nothing invalid can ever be
+saved. One note: saving regenerates the file, so hand-written
+comments in it are replaced; the settings all survive.
+
+**File ▸ Print Preview** (Ctrl+Alt+P) is the print moment without
+the paper: the very same renderer paints the pages onto the screen,
+so what the preview shows is exactly what the printer would do. Pick
+a format (and, if you like, the selection checkbox), then zoom, page
+through, and print straight from the preview window when it looks
+right. This is the honest companion to a non-WYSIWYG editor: the
+text stays plain while you write, and the dressed pages are one
+keystroke away whenever you want to see them.
+
 ### .wvfmt files
 
 A format is a small, readable TOML file. Your personal copies live in

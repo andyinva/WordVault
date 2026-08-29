@@ -738,6 +738,22 @@ class MainWindow(QMainWindow):
         print_action.triggered.connect(self._on_print)
         file_menu.addAction(print_action)
 
+        preview_action = QAction("Print Pre&view…", self)
+        preview_action.setShortcut("Ctrl+Alt+P")
+        preview_action.setToolTip(
+            "See the printed pages on screen — same renderer, same "
+            "format, no paper. Print straight from the preview.")
+        preview_action.triggered.connect(self._on_print_preview)
+        file_menu.addAction(preview_action)
+
+        studio_action = QAction("Format &Studio…", self)
+        studio_action.setToolTip(
+            "Edit a print format beside a live preview: the settings "
+            "run down the left, the pages repaint on the right as you "
+            "tune them")
+        studio_action.triggered.connect(self._on_format_studio)
+        file_menu.addAction(studio_action)
+
         learn_action = QAction("&Learn Print Format from .docx…", self)
         learn_action.setToolTip(
             "Read a Word document's page, margins, and styles and "
@@ -1696,6 +1712,44 @@ class MainWindow(QMainWindow):
 
         refill()
         dialog.exec()
+
+    def _on_format_studio(self) -> None:
+        """File ▸ Format Studio: pick a personal format, then tune it
+        beside a live preview (see wordvault/printing/studio.py).  The
+        open document poses for the fitting; with nothing open, a
+        built-in sample text stands in."""
+        import wordvault.printing.format_file as ff
+        from wordvault.printing.studio import FormatStudio
+
+        paths = sorted(ff.FORMATS_DIR.glob("*.wvfmt"))
+        if not paths:
+            QMessageBox.information(
+                self, "Format Studio",
+                "No personal formats found in ~/.wordvault/formats.")
+            return
+        names = [p.stem for p in paths]
+        choice, ok = QInputDialog.getItem(
+            self, "Format Studio", "Tune which format?", names, 0,
+            editable=False)
+        if not ok:
+            return
+        path = paths[names.index(choice)]
+        try:
+            studio = FormatStudio(
+                path,
+                sample_text=self._editor.toPlainText()
+                if self._current_doc is not None else "",
+                title=(self._current_doc.title
+                       if self._current_doc else "Sample Document"),
+                author=str(self._settings.value("author", "")),
+                parent=self,
+            )
+        except Exception as error:        # noqa: BLE001 — a broken file
+            QMessageBox.warning(
+                self, "Format Studio",
+                f"{path.name} did not load: {error}")
+            return
+        studio.exec()
 
     def _on_learn_format(self) -> None:
         """File ▸ Learn Print Format from .docx: pick a Word document
@@ -2951,18 +3005,17 @@ class MainWindow(QMainWindow):
 
     _PLAIN_FORMAT = "Plain (as displayed)"
 
-    def _on_print(self) -> None:
-        """File ▸ Print: pick a format BY NAME, then print — the styled
-        page is first seen on paper (non-WYSIWYG, by design; a
-        Print-to-PDF printer is the paper-free check).  The chosen
-        format's page size and margins outrank Page Setup."""
-        from PyQt6.QtPrintSupport import QPrintDialog
-
+    def _print_choices(self, verb: str = "Print"):
+        """The format-and-selection chooser SHARED by File ▸ Print and
+        File ▸ Print Preview: pick a format BY NAME (its page size and
+        margins outrank Page Setup), optionally limit to the
+        highlighted selection.  Returns the choices as a dict, or None
+        when the user cancels."""
         from wordvault.printing import list_formats
 
         if self._current_doc is None:
-            QMessageBox.information(self, "Print", "Open a document first.")
-            return
+            QMessageBox.information(self, verb, "Open a document first.")
+            return None
         self._autosave()
 
         # ---- choose the format (remembered per document) ----
@@ -3001,17 +3054,17 @@ class MainWindow(QMainWindow):
 
         has_selection = self._editor.textCursor().hasSelection()
         chooser = QDialog(self)
-        chooser.setWindowTitle("Print Format")
+        chooser.setWindowTitle(f"{verb} Format")
         layout = QVBoxLayout(chooser)
         layout.addWidget(QLabel(
-            "Print with format (defined in ~/.wordvault/formats):",
+            f"{verb} with format (defined in ~/.wordvault/formats):",
             chooser))
         combo = QComboBox(chooser)
         combo.addItems(display)
         combo.setCurrentIndex(current)
         layout.addWidget(combo)
         selection_box = QCheckBox(
-            "Print only the highlighted selection", chooser)
+            f"{verb} only the highlighted selection", chooser)
         selection_box.setEnabled(has_selection)
         selection_box.setToolTip(
             "Prints just the passage selected in the editor"
@@ -3025,7 +3078,7 @@ class MainWindow(QMainWindow):
         buttons.rejected.connect(chooser.reject)
         layout.addWidget(buttons)
         if chooser.exec() != QDialog.DialogCode.Accepted:
-            return
+            return None
         choice = display[combo.currentIndex()]
         chosen_name = real_names[combo.currentIndex()]
         selection_only = has_selection and selection_box.isChecked()
@@ -3037,15 +3090,66 @@ class MainWindow(QMainWindow):
             f"print_format:{self._current_doc.uuid}", chosen_name
         )
         chosen = next((f for f in formats if f.name == chosen_name), None)
+        return {"chosen": chosen, "choice": choice,
+                "selection_only": selection_only, "text": text_to_print}
 
+    def _prepared_printer(self, choices):
+        """The shared printer, named and FULLY configured for these
+        choices before any painting begins — Print Preview blanks to
+        gray if the printer is touched during paintRequested, so every
+        mutation happens here and the render slot only paints."""
         printer = self._ensure_printer()
-        printer.setDocName(self._current_doc.title
-                           + (" (selection)" if selection_only else ""))
-        if chosen is not None:
-            from wordvault.printing.renderer import apply_page_setup
+        printer.setDocName(
+            self._current_doc.title
+            + (" (selection)" if choices["selection_only"] else ""))
+        if choices["chosen"] is not None:
+            from wordvault.printing.renderer import page_setup_for_preview
 
-            apply_page_setup(printer, chosen)
+            page_setup_for_preview(printer, choices["chosen"])
+        else:
+            printer.setFullPage(False)   # plain path: normal margins
+        return printer
 
+    def _render_to_printer(self, printer, choices) -> None:
+        """Paint the chosen text in the chosen format onto ANY printer
+        — the real one, or the screen 'printer' behind Print Preview.
+        One renderer serving both is what makes the preview truthful."""
+        if choices["chosen"] is None:
+            if choices["selection_only"]:
+                # Plain, selection only: a throwaway document in the
+                # editor's own font carries just the passage.
+                from PyQt6.QtGui import QTextDocument
+
+                doc = QTextDocument()
+                doc.setDefaultFont(self._editor.font())
+                doc.setPlainText(choices["text"])
+                doc.print(printer)
+            else:
+                # Plain: the text as displayed in the editor.
+                self._editor.document().print(printer)
+        else:
+            from wordvault.printing.renderer import print_styled
+
+            # Handles normal AND mirrored margins, headers/footers,
+            # and the byline's {title}/{author}/{date} variables.  A
+            # selection rides the SAME format: same page, same fonts,
+            # same headers — just less of the essay.
+            print_styled(
+                printer, choices["text"], choices["chosen"],
+                title=self._current_doc.title,
+                author=str(self._settings.value("author", "")),
+                configure=False,        # _prepared_printer did it all
+            )
+
+    def _on_print(self) -> None:
+        """File ▸ Print: choose, then print — the styled page on paper
+        (or through a Print-to-PDF printer)."""
+        from PyQt6.QtPrintSupport import QPrintDialog
+
+        choices = self._print_choices("Print")
+        if choices is None:
+            return
+        printer = self._prepared_printer(choices)
         dialog = QPrintDialog(printer, self)
         if dialog.exec():
             # Print-to-file always produces PDF content; a filename typed
@@ -3054,35 +3158,32 @@ class MainWindow(QMainWindow):
             if out and not out.lower().endswith(".pdf"):
                 stem = out.rsplit(".", 1)[0] if "." in Path(out).name else out
                 printer.setOutputFileName(stem + ".pdf")
-            if chosen is None:
-                if selection_only:
-                    # Plain, selection only: a throwaway document in
-                    # the editor's own font carries just the passage.
-                    from PyQt6.QtGui import QTextDocument
-
-                    doc = QTextDocument()
-                    doc.setDefaultFont(self._editor.font())
-                    doc.setPlainText(text_to_print)
-                    doc.print(printer)
-                else:
-                    # Plain: the text as displayed in the editor.
-                    self._editor.document().print(printer)
-            else:
-                from wordvault.printing.renderer import print_styled
-
-                # Handles normal AND mirrored margins, headers/footers,
-                # and the byline's {title}/{author}/{date} variables.
-                # A selection rides the SAME format: same page, same
-                # fonts, same headers — just less of the essay.
-                print_styled(
-                    printer, text_to_print, chosen,
-                    title=self._current_doc.title,
-                    author=str(self._settings.value("author", "")),
-                )
-            what = "selection" if selection_only else "document"
+            self._render_to_printer(printer, choices)
+            what = ("selection" if choices["selection_only"]
+                    else "document")
             self.statusBar().showMessage(
-                f"Sent {what} to printer ({choice}).", 6000
-            )
+                f"Sent {what} to printer ({choices['choice']}).", 6000)
+
+    def _on_print_preview(self) -> None:
+        """File ▸ Print Preview: the print moment, without the paper.
+        The SAME renderer paints the pages onto the screen, so the
+        preview shows exactly what the printer would do — no betrayal
+        of the non-WYSIWYG design, and no ream spent checking a
+        format.  Zoom, page-through, and even print straight from the
+        preview window."""
+        from PyQt6.QtPrintSupport import QPrintPreviewDialog
+
+        choices = self._print_choices("Preview")
+        if choices is None:
+            return
+        printer = self._prepared_printer(choices)
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle(
+            f"Print Preview — {self._current_doc.title}")
+        preview.resize(920, 720)
+        preview.paintRequested.connect(
+            lambda p: self._render_to_printer(p, choices))
+        preview.exec()
 
     # ----------------------------------------------- View menu additions ---
 

@@ -34,10 +34,12 @@ design (see the User Guide, Part I).
 
 ## Solid features — a day or two each
 
-- [ ] **Print Preview** — QPrintPreviewDialog wraps the existing
+- [x] **Print Preview** — QPrintPreviewDialog wraps the existing
   renderer almost for free. No betrayal of non-WYSIWYG: it is the
   print moment, just without paper. Probably the most-expected
-  missing feature.
+  missing feature. *(Shipped: File ▸ Print Preview, Ctrl+Alt+P —
+  same chooser, same renderer, zoom and page-through, print straight
+  from the preview window.)*
 - [x] **Export as .docx / PDF / .md / .txt** — the reverse of import:
   headings, bold, italic, lists back into a Word file for people who
   ask for one. The md/txt halves are trivial; docx is the real day.

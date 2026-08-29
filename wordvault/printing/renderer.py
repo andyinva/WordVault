@@ -102,7 +102,15 @@ def _block_format(style: StyleSpec, *, suppress_break: bool = False) -> QTextBlo
     fmt.setLeftMargin((style.indent_mm or 0.0) * _MM_TO_PT)
     fmt.setTopMargin(style.space_before_pt or 0.0)
     fmt.setBottomMargin(style.space_after_pt or 0.0)
-    if style.line_spacing:
+    if style.line_height_pt:
+        # EXACT leading (Word's "Exactly 14 pt"): every line the same
+        # height in points, regardless of the font's own metrics —
+        # the finest line-spacing control, and it outranks the
+        # proportional multiplier below.
+        fmt.setLineHeight(style.line_height_pt,
+                          QTextBlockFormat.LineHeightTypes
+                          .FixedHeight.value)
+    elif style.line_spacing:
         fmt.setLineHeight(style.line_spacing * 100.0,
                           QTextBlockFormat.LineHeightTypes
                           .ProportionalHeight.value)
@@ -113,10 +121,28 @@ def _block_format(style: StyleSpec, *, suppress_break: bool = False) -> QTextBlo
     return fmt
 
 
+def _print_font(family: str, size_pt: float) -> QFont:
+    """A font prepared for PRINTING (and the print preview).
+
+    The two settings are the cure for 'the kerning looks broken':
+    * PreferNoHinting — by default Qt rounds every glyph advance to a
+      whole screen pixel; painted under the paginator's SCALED painter
+      those rounded advances land unevenly, squeezing some letter
+      pairs and gapping others.  No-hinting uses the font's true
+      typographic advances, the way ink on paper works.
+    * setKerning(True) — the font's own kerning pairs (AV, To, Wa…)
+      are applied as its designer intended.
+    """
+    font = QFont(family)
+    font.setPointSizeF(size_pt)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    font.setKerning(True)
+    return font
+
+
 def _char_format(style: StyleSpec, bold=False, italic=False) -> QTextCharFormat:
     fmt = QTextCharFormat()
-    font = QFont(style.font or "Georgia")
-    font.setPointSizeF(style.size_pt or 11.0)
+    font = _print_font(style.font or "Georgia", style.size_pt or 11.0)
     font.setBold(bold or bool(style.bold))
     font.setItalic(italic or bool(style.italic))
     fmt.setFont(font)
@@ -283,6 +309,10 @@ def _draw_furniture(painter, spec, variables, x_left: float, x_right: float,
     font.setPixelSize(max(1, round(spec.size_pt)))
     font.setBold(spec.bold)
     font.setItalic(spec.italic)
+    # Same cure as _print_font: rounded glyph advances under a scaled
+    # painter read as broken kerning — use true typographic advances.
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    font.setKerning(True)
     painter.setFont(font)
     metrics = QFontMetrics(font)
 
@@ -304,8 +334,17 @@ def _draw_furniture(painter, spec, variables, x_left: float, x_right: float,
     draw(spec.right, "right")
 
 
+def page_setup_for_preview(printer, fmt: PrintFormat) -> None:
+    """EVERY printer mutation a styled render needs, done up front —
+    Print Preview must configure before painting begins, because
+    touching the printer inside paintRequested blanks the preview."""
+    apply_page_setup(printer, fmt)
+    printer.setFullPage(fmt.needs_manual_pagination())
+
+
 def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
-                 title: str = "", author: str = "") -> None:
+                 title: str = "", author: str = "",
+                 configure: bool = True) -> None:
     """
     Render and print with the chosen format.
 
@@ -324,12 +363,13 @@ def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,
     )
 
     if not fmt.needs_manual_pagination():
-        apply_page_setup(printer, fmt)
+        if configure:
+            apply_page_setup(printer, fmt)
         document.print(printer)
         return
 
     print_book(printer, fmt, body_document=document,
-               title=title, author=author)
+               title=title, author=author, configure=configure)
 
 
 def text_area_pt(fmt: PrintFormat) -> tuple[float, float]:
@@ -400,7 +440,7 @@ def collect_blocks(document, fmt: PrintFormat):
 
 def print_book(printer, fmt: PrintFormat, *, body_document,
                front_document=None, back_document=None, title: str = "",
-               author: str = "") -> None:
+               author: str = "", configure: bool = True) -> None:
     """
     Hand-done pagination for a body document plus optional FRONT
     MATTER (title page, copyright, contents) and BACK MATTER (the
@@ -428,8 +468,13 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
     from PyQt6.QtGui import QAbstractTextDocumentLayout, QPainter, QPalette
 
     date_str = datetime.now().strftime("%B %d, %Y")
-    apply_page_setup(printer, fmt)     # size; zero margins when mirrored
-    printer.setFullPage(True)
+    if configure:
+        # Print Preview passes configure=False: reconfiguring a
+        # printer WHILE its paintRequested slot runs blanks the
+        # preview to gray — the caller must set the printer up before
+        # the preview begins (page_setup_for_preview does both steps).
+        apply_page_setup(printer, fmt)  # size; zero margins when mirrored
+        printer.setFullPage(True)
 
     paper_pt = _qt_page_size(fmt.page_size).sizePoints()  # QSize, points
     text_w_pt, text_h_pt = text_area_pt(fmt)
@@ -452,6 +497,16 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
                  "pages": numbered_pages}
     body_font = fmt.body.font or "Georgia"
 
+    # The page range chosen in the print dialog ("Pages: 1", "2-5"):
+    # the manual paginator must honor it itself — it paints pages by
+    # hand, so nothing else will skip them (choosing "1" used to print
+    # the whole document).  Range numbers are PHYSICAL pages, 1-based,
+    # counted across the whole book — what the dialog means by "page".
+    ranges = printer.pageRanges()
+
+    def wanted(physical_page_1based: int) -> bool:
+        return ranges.isEmpty() or ranges.contains(physical_page_1based)
+
     painter = QPainter(printer)
     try:
         # Document coordinates are points; the printer wants device dots.
@@ -459,9 +514,13 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
         top_pt = fmt.margins.top * _MM_TO_PT
         bottom_pt = fmt.margins.bottom * _MM_TO_PT
         physical = 0                   # position in the WHOLE book
+        printed_any = False
         for document, furnished, number_offset in sections:
             for page in range(document.pageCount()):
-                if physical:
+                if not wanted(physical + 1):
+                    physical += 1      # mirror margins still alternate
+                    continue
+                if printed_any:
                     printer.newPage()
                 _t, _r, _b, left_mm = fmt.margins.for_page(physical)
                 left_pt = left_mm * _MM_TO_PT
@@ -469,6 +528,15 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
                 painter.save()
                 painter.scale(dots_per_pt, dots_per_pt)
                 painter.translate(left_pt, top_pt - page * text_h_pt)
+                # context.clip below only SELECTS lines: a line whose
+                # box merely grazes the slice boundary is painted IN
+                # FULL — which reprinted each page's last line above
+                # the NEXT page's header (the stray-line report, Aug
+                # 2026).  This painter clip actually cuts pixels at
+                # the slice edges; a little sideways slack lets italic
+                # overhangs breathe.
+                painter.setClipRect(QRectF(-6, page * text_h_pt,
+                                           text_w_pt + 12, text_h_pt))
                 context = QAbstractTextDocumentLayout.PaintContext()
                 context.clip = QRectF(0, page * text_h_pt,
                                       text_w_pt, text_h_pt)
@@ -497,5 +565,6 @@ def print_book(printer, fmt: PrintFormat, *, body_document,
                         )
                     painter.restore()
                 physical += 1
+                printed_any = True
     finally:
         painter.end()

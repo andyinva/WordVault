@@ -276,3 +276,37 @@ def test_untouched_copies_auto_upgrade_edited_ones_never(tmp_path, monkeypatch):
     assert "A v2" in names           # untouched copy: auto-upgraded
     assert "B mine" in names         # edited copy: the author's, forever
     assert "B v2" not in names
+
+
+def test_exact_line_height(tmp_path):
+    """line_height_pt: exact leading in points (Word's "Exactly") —
+    the fine line-spacing control; validated to a sane range."""
+    fmt = load_format(write(
+        tmp_path, "[body]\nline_height_pt = 13.5\n", "lh.wvfmt"))
+    assert fmt.body.line_height_pt == pytest.approx(13.5)
+
+    with pytest.raises(FormatError):
+        load_format(write(
+            tmp_path, "[body]\nline_height_pt = 1\n", "lh2.wvfmt"))
+    with pytest.raises(FormatError):
+        load_format(write(
+            tmp_path, "[body]\nline_height_pt = 400\n", "lh3.wvfmt"))
+
+
+def test_exact_line_height_outranks_the_multiplier(tmp_path):
+    """When both are given, the exact points win in the renderer."""
+    pytest.importorskip("PyQt6.QtWidgets", exc_type=ImportError)
+    from PyQt6.QtGui import QTextBlockFormat
+    from PyQt6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from wordvault.printing.renderer import _block_format
+
+    fmt = load_format(write(
+        tmp_path,
+        "[body]\nline_spacing = 2.0\nline_height_pt = 13.5\n",
+        "both.wvfmt"))
+    block = _block_format(fmt.body)
+    assert block.lineHeight() == pytest.approx(13.5)
+    assert (block.lineHeightType()
+            == QTextBlockFormat.LineHeightTypes.FixedHeight.value)

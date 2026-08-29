@@ -139,8 +139,9 @@ def _write(cursor: QTextCursor, text: str, *, family: str,
         block.setPageBreakPolicy(
             QTextBlockFormat.PageBreakFlag.PageBreak_AlwaysBefore)
     char = QTextCharFormat()
-    font = QFont(family)
-    font.setPointSizeF(size_pt)
+    from wordvault.printing.renderer import _print_font
+
+    font = _print_font(family, size_pt)   # true advances (kerning fix)
     font.setItalic(italic)
     font.setBold(bold)
     char.setFont(font)
@@ -168,8 +169,9 @@ def _toc_line(cursor: QTextCursor, level: int, text: str, page: int, *,
                           QTextOption.TabType.RightTab)
     block.setTabPositions([tab])
     char = QTextCharFormat()
-    font = QFont(family)
-    font.setPointSizeF(10.0 if level == 2 else 11.0)
+    from wordvault.printing.renderer import _print_font
+
+    font = _print_font(family, 10.0 if level == 2 else 11.0)
     char.setFont(font)
     if first:
         cursor.setBlockFormat(block)

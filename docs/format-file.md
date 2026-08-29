@@ -120,7 +120,8 @@ paints each page at its own offset.
 | `size_pt` | number | font size in points |
 | `bold`, `italic` | boolean | face styling |
 | `align` | string | left / right / center / justify |
-| `line_spacing` | number | line height multiple (1.0 = single) |
+| `line_spacing` | number | line height multiple (1.0 = single; any decimal — 1.12 works) |
+| `line_height_pt` | number | EXACT leading in points (Word's "Exactly 14 pt"); outranks `line_spacing` — the finest line-spacing control |
 | `first_line_indent_mm` | number | paragraph first-line indent |
 | `indent_mm` | number | left margin of the whole block |
 | `space_before_pt`, `space_after_pt` | number | vertical gaps |

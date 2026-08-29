@@ -102,7 +102,12 @@ class StyleSpec:
     bold: Optional[bool] = None
     italic: Optional[bool] = None
     align: Optional[str] = None            # left | right | center | justify
-    line_spacing: Optional[float] = None   # multiple, e.g. 1.4
+    line_spacing: Optional[float] = None   # multiple, e.g. 1.4 (or 1.12 —
+                                           # any decimal; fine by nature)
+    line_height_pt: Optional[float] = None  # EXACT leading in points
+                                            # (Word's "Exactly 14 pt") —
+                                            # the finest control there is;
+                                            # outranks line_spacing
     first_line_indent_mm: Optional[float] = None
     indent_mm: Optional[float] = None      # left margin of the whole block
     space_before_pt: Optional[float] = None
@@ -245,6 +250,12 @@ def _parse_style(section: str, data: dict, path: Path) -> StyleSpec:
                 raise FormatError(
                     f"{path.name}: [{section}] {key} must be a number"
                 ) from None
+    exact = kwargs.get("line_height_pt")
+    if exact is not None and not 4 <= exact <= 120:
+        raise FormatError(
+            f"{path.name}: [{section}] line_height_pt must be between "
+            "4 and 120 points"
+        )
     return StyleSpec(**kwargs)
 
 

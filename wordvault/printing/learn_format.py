@@ -157,6 +157,9 @@ def _style_spec(styles_root, style_id: str, defaults: dict,
             spec["space_after_pt"] = round(int(after) / 20.0, 1)
         if line and rule == "auto":
             spec["line_spacing"] = round(int(line) / 240.0, 2)
+        elif line and rule in ("exact", "atLeast"):
+            # Word's "Exactly"/"At least" leading, in twips -> points.
+            spec["line_height_pt"] = round(int(line) / 20.0, 1)
 
     indent = _prop(chain, f"{W}pPr/{W}ind", None)
     if indent is not None:
@@ -412,8 +415,8 @@ def learn_format(docx_path: str | Path, name: str) -> str:
 
     _emit_section(lines, "body", body,
                   ("font", "size_pt", "align", "line_spacing",
-                   "first_line_indent_mm", "space_before_pt",
-                   "space_after_pt"))
+                   "line_height_pt", "first_line_indent_mm",
+                   "space_before_pt", "space_after_pt"))
     for n in range(1, 7):
         _emit_section(lines, f"heading{n}", headings[n],
                       ("size_pt", "bold", "italic", "align",
