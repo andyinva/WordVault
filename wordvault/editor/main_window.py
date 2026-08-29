@@ -878,6 +878,13 @@ class MainWindow(QMainWindow):
         provenance_action.triggered.connect(self._on_provenance_report)
         doc_menu.addAction(provenance_action)
 
+        norm_action = QAction("Check Against My &Norm…", self)
+        norm_action.setToolTip(
+            "Score this document against your style profile: how like "
+            "your established voice is it, and where does it deviate?")
+        norm_action.triggered.connect(self._on_style_check)
+        doc_menu.addAction(norm_action)
+
         # Export As: every way a document leaves the vault, under one
         # roof.  The first three export what is ON SCREEN (a viewed
         # old draft exports as that old draft); .wvdoc carries the
@@ -989,6 +996,26 @@ class MainWindow(QMainWindow):
         gather_action.setShortcut("Ctrl+Shift+G")
         gather_action.triggered.connect(self._on_gather_tray)
         library_menu.addAction(gather_action)
+
+        # --- Writing DNA (stylometry): the writer's measurable
+        # fingerprint, distilled from the whole library.
+        dna_build_action = QAction("Build My Style &Profile…", self)
+        dna_build_action.setToolTip(
+            "Distill your writing DNA from every document in the "
+            "library — function-word habits, sentence rhythm, "
+            "punctuation, vocabulary. Foreign texts are shed "
+            "automatically in a second pass.")
+        dna_build_action.triggered.connect(self._on_build_style_profile)
+        library_menu.addAction(dna_build_action)
+
+        dna_review_action = QAction("Review Foreign &Documents…", self)
+        dna_review_action.setToolTip(
+            "Score every document against your style profile and "
+            "review the least-like-you first — tag confirmed "
+            "strangers 'Not my writing'. You stay the judge; nothing "
+            "is marked automatically.")
+        dna_review_action.triggered.connect(self._on_review_foreign)
+        library_menu.addAction(dna_review_action)
 
         review_action = QAction("&Review Version Groups…", self)
         review_action.setShortcut("Ctrl+G")
@@ -1904,6 +1931,9 @@ class MainWindow(QMainWindow):
                 spelling_rows=self._store.spelling_for_document(
                     self._current_doc.id),
                 program_version=__version__,
+                # Stage 4 of the Writing-DNA plan: when a profile
+                # exists, the report carries the stylometric verdict.
+                style_block=self._style_block_for(self._current_doc.id),
             )
         finally:
             _QApp.restoreOverrideCursor()
@@ -1942,6 +1972,236 @@ class MainWindow(QMainWindow):
         buttons.addWidget(close_btn)
         layout.addLayout(buttons)
         dialog.exec()
+
+    # ------------------------------------------ writing DNA (stylometry) --
+
+    FOREIGN_TAG = "Not my writing"
+
+    def _style_profile(self):
+        """The saved profile, or None.  Lives beside the library in
+        ~/.wordvault (see wordvault/stylometry.py)."""
+        from wordvault import stylometry
+
+        if stylometry.PROFILE_PATH.exists():
+            try:
+                return stylometry.StyleProfile.from_json(
+                    stylometry.PROFILE_PATH.read_text(encoding="utf-8"))
+            except Exception:            # noqa: BLE001 — a corrupt file
+                return None              # is treated as "no profile yet"
+        return None
+
+    def _on_build_style_profile(self) -> None:
+        """Library ▸ Build My Style Profile: distill the writer's DNA
+        from every document, shedding foreign outliers in a second
+        pass (the chicken-and-egg build — see stylometry.py).
+        Documents already tagged FOREIGN_TAG are excluded up front."""
+        from PyQt6.QtWidgets import QProgressDialog
+
+        from wordvault import stylometry
+
+        docs = [d for d in self._store.list_documents()
+                if self.FOREIGN_TAG not in
+                {t.name for t in self._store.tags_for(d.id)}]
+        progress = QProgressDialog(
+            "Reading the library…", "Cancel", 0, len(docs), self)
+        progress.setWindowTitle("Building your style profile")
+        progress.setMinimumDuration(400)
+
+        features, word_counts, titles = [], [], []
+        for i, doc in enumerate(docs):
+            progress.setValue(i)
+            if progress.wasCanceled():
+                return
+            text = self._store.current_text(doc.id)
+            features.append(stylometry.extract_features(text))
+            word_counts.append(len(text.split()))
+            titles.append(doc.title)
+        progress.setValue(len(docs))
+
+        profile, outliers = stylometry.build_profile(features, word_counts)
+        stylometry.PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        stylometry.PROFILE_PATH.write_text(profile.to_json(),
+                                           encoding="utf-8")
+
+        message = (
+            f"Your style profile is built: {profile.docs_used} "
+            f"documents, {profile.words_total:,} words distilled into "
+            "your writing DNA — function-word habits, sentence "
+            "rhythm, punctuation, vocabulary.")
+        if outliers:
+            names = "\n".join(
+                f"  • {titles[i]}" for i in outliers[:10])
+            more = ("\n  …and more" if len(outliers) > 10 else "")
+            message += (
+                f"\n\n{len(outliers)} document(s) read so unlike the "
+                f"rest that the second pass set them aside:\n{names}"
+                f"{more}\n\nReview them in Library ▸ Review Foreign "
+                "Documents.")
+        if profile.too_small:
+            message += ("\n\nCaution: this corpus is small — the "
+                        "profile will gain confidence as the library "
+                        "grows.")
+        QMessageBox.information(self, "Style profile", message)
+
+    def _on_review_foreign(self) -> None:
+        """Library ▸ Review Foreign Documents: every document scored
+        against the profile, least-like-you first.  The writer stays
+        the judge — checking a row and clicking Tag applies
+        FOREIGN_TAG; nothing is ever marked automatically."""
+        from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel,
+                                     QPushButton, QTreeWidget,
+                                     QTreeWidgetItem, QVBoxLayout)
+
+        from wordvault import stylometry
+
+        profile = self._style_profile()
+        if profile is None:
+            QMessageBox.information(
+                self, "Review Foreign Documents",
+                "Build your style profile first (Library ▸ Build My "
+                "Style Profile).")
+            return
+
+        from PyQt6.QtWidgets import QApplication
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            rows = []
+            for doc in self._store.list_documents():
+                feats = stylometry.extract_features(
+                    self._store.current_text(doc.id))
+                if not feats:
+                    continue             # too short to judge fairly
+                d = stylometry.delta(profile, feats)
+                rows.append((d, doc))
+            rows.sort(key=lambda r: -r[0])
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Review Foreign Documents")
+        dialog.resize(760, 520)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(
+            "Least like your established voice first. The score is a "
+            "SIMILARITY, not proof — you are the judge. Check the "
+            "strangers and tag them.", dialog))
+
+        tree = QTreeWidget(dialog)
+        tree.setHeaderLabels(["Verdict", "Distance", "Like you",
+                              "Document"])
+        already = {d.id for d in
+                   self._store.documents_with_tag(self.FOREIGN_TAG)}
+        for d, doc in rows:
+            item = QTreeWidgetItem([
+                stylometry.verdict(profile, d), f"{d:.2f}",
+                f"{stylometry.typicality(profile, d)}%",
+                doc.title + ("   [already tagged]"
+                             if doc.id in already else "")])
+            item.setData(0, Qt.ItemDataRole.UserRole, doc.id)
+            item.setFlags(item.flags()
+                          | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Unchecked)
+            tree.addTopLevelItem(item)
+        for col in range(3):
+            tree.resizeColumnToContents(col)
+        layout.addWidget(tree)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        tag_btn = QPushButton(
+            f"&Tag checked as “{self.FOREIGN_TAG}”", dialog)
+
+        def tag_checked():
+            count = 0
+            for i in range(tree.topLevelItemCount()):
+                item = tree.topLevelItem(i)
+                if item.checkState(0) == Qt.CheckState.Checked:
+                    self._store.add_tag(
+                        item.data(0, Qt.ItemDataRole.UserRole),
+                        self.FOREIGN_TAG)
+                    count += 1
+            self._reload_tag_filter()
+            self.statusBar().showMessage(
+                f"{count} document(s) tagged “{self.FOREIGN_TAG}” — "
+                "they will be excluded from the next profile build.",
+                8000)
+            dialog.accept()
+
+        tag_btn.clicked.connect(tag_checked)
+        close_btn = QPushButton("Close", dialog)
+        close_btn.clicked.connect(dialog.reject)
+        buttons.addWidget(tag_btn)
+        buttons.addWidget(close_btn)
+        layout.addLayout(buttons)
+        dialog.exec()
+
+    def _style_block_for(self, doc_id: int) -> str | None:
+        """The provenance report's stylometric paragraph, or None when
+        there is no profile or the document is too short to judge."""
+        from wordvault import stylometry
+
+        profile = self._style_profile()
+        if profile is None:
+            return None
+        feats = stylometry.extract_features(
+            self._store.current_text(doc_id))
+        if not feats:
+            return None
+        d = stylometry.delta(profile, feats)
+        word = stylometry.verdict(profile, d)
+        likeness = stylometry.typicality(profile, d)
+        block = (
+            f"Scored against the writer's style profile (built "
+            f"{profile.created_utc[:10]} from {profile.docs_used} "
+            f"documents, {profile.words_total:,} words): distance "
+            f"{d:.2f}, verdict **{word}** — more typical of this "
+            f"writer than roughly {likeness}% of their own documents. "
+            "The score is a similarity to the writer's established "
+            "voice, not a probability of authorship.")
+        if profile.too_small:
+            block += (" Caution: the profile was built from a small "
+                      "corpus and should be read accordingly.")
+        return block
+
+    def _on_style_check(self) -> None:
+        """Document ▸ Check Against My Norm: the likeness number AND
+        the why — which habits deviate, in plain language."""
+        from wordvault import stylometry
+
+        if self._current_doc is None:
+            QMessageBox.information(self, "Check Against My Norm",
+                                    "Open a document first.")
+            return
+        profile = self._style_profile()
+        if profile is None:
+            QMessageBox.information(
+                self, "Check Against My Norm",
+                "Build your style profile first (Library ▸ Build My "
+                "Style Profile).")
+            return
+        feats = stylometry.extract_features(self._editor.toPlainText())
+        if not feats:
+            QMessageBox.information(
+                self, "Check Against My Norm",
+                "This document is too short to judge fairly "
+                f"(under {stylometry.MIN_DOC_WORDS} words).")
+            return
+        d = stylometry.delta(profile, feats)
+        word = stylometry.verdict(profile, d)
+        likeness = stylometry.typicality(profile, d)
+        lines = stylometry.explain(profile, feats)
+        why = ("\n\nWhere it deviates from your norm:\n" +
+               "\n".join(f"  • {line}" for line in lines)
+               if lines else
+               "\n\nNo habit deviates strongly from your norm.")
+        QMessageBox.information(
+            self, "Check Against My Norm",
+            f"Verdict: {word.upper()} — more typical of you than "
+            f"roughly {likeness}% of your own documents "
+            f"(distance {d:.2f}).{why}\n\n"
+            "The score is a similarity to your established voice, "
+            "not proof of authorship.")
 
     def _on_formatter(self) -> None:
         """Open (or raise) the Book Formatter — a NON-modal window, so
@@ -2729,21 +2989,58 @@ class MainWindow(QMainWindow):
         ))
         current = (real_names.index(remembered)
                    if remembered in real_names else 0)
-        choice, ok = QInputDialog.getItem(
-            self, "Print Format",
+
+        # The chooser is a small dialog rather than QInputDialog so it
+        # can also carry the selection checkbox: print only the
+        # highlighted passage.  The box is live only while a selection
+        # actually exists, and QTextCursor's paragraph separators
+        # (U+2029) are turned back into real newlines before printing.
+        from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog,
+                                     QDialogButtonBox, QLabel,
+                                     QVBoxLayout)
+
+        has_selection = self._editor.textCursor().hasSelection()
+        chooser = QDialog(self)
+        chooser.setWindowTitle("Print Format")
+        layout = QVBoxLayout(chooser)
+        layout.addWidget(QLabel(
             "Print with format (defined in ~/.wordvault/formats):",
-            display, current, editable=False,
-        )
-        if not ok:
+            chooser))
+        combo = QComboBox(chooser)
+        combo.addItems(display)
+        combo.setCurrentIndex(current)
+        layout.addWidget(combo)
+        selection_box = QCheckBox(
+            "Print only the highlighted selection", chooser)
+        selection_box.setEnabled(has_selection)
+        selection_box.setToolTip(
+            "Prints just the passage selected in the editor"
+            if has_selection else
+            "Select a passage in the editor first")
+        layout.addWidget(selection_box)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel, parent=chooser)
+        buttons.accepted.connect(chooser.accept)
+        buttons.rejected.connect(chooser.reject)
+        layout.addWidget(buttons)
+        if chooser.exec() != QDialog.DialogCode.Accepted:
             return
-        chosen_name = real_names[display.index(choice)]
+        choice = display[combo.currentIndex()]
+        chosen_name = real_names[combo.currentIndex()]
+        selection_only = has_selection and selection_box.isChecked()
+        text_to_print = (
+            self._editor.textCursor().selectedText().replace(
+                "\u2029", "\n")   # QTextCursor newlines
+            if selection_only else self._editor.toPlainText())
         self._settings.setValue(
             f"print_format:{self._current_doc.uuid}", chosen_name
         )
         chosen = next((f for f in formats if f.name == chosen_name), None)
 
         printer = self._ensure_printer()
-        printer.setDocName(self._current_doc.title)
+        printer.setDocName(self._current_doc.title
+                           + (" (selection)" if selection_only else ""))
         if chosen is not None:
             from wordvault.printing.renderer import apply_page_setup
 
@@ -2758,20 +3055,33 @@ class MainWindow(QMainWindow):
                 stem = out.rsplit(".", 1)[0] if "." in Path(out).name else out
                 printer.setOutputFileName(stem + ".pdf")
             if chosen is None:
-                # Plain: the text as displayed in the editor.
-                self._editor.document().print(printer)
+                if selection_only:
+                    # Plain, selection only: a throwaway document in
+                    # the editor's own font carries just the passage.
+                    from PyQt6.QtGui import QTextDocument
+
+                    doc = QTextDocument()
+                    doc.setDefaultFont(self._editor.font())
+                    doc.setPlainText(text_to_print)
+                    doc.print(printer)
+                else:
+                    # Plain: the text as displayed in the editor.
+                    self._editor.document().print(printer)
             else:
                 from wordvault.printing.renderer import print_styled
 
                 # Handles normal AND mirrored margins, headers/footers,
                 # and the byline's {title}/{author}/{date} variables.
+                # A selection rides the SAME format: same page, same
+                # fonts, same headers — just less of the essay.
                 print_styled(
-                    printer, self._editor.toPlainText(), chosen,
+                    printer, text_to_print, chosen,
                     title=self._current_doc.title,
                     author=str(self._settings.value("author", "")),
                 )
+            what = "selection" if selection_only else "document"
             self.statusBar().showMessage(
-                f"Sent to printer ({choice}).", 6000
+                f"Sent {what} to printer ({choice}).", 6000
             )
 
     # ----------------------------------------------- View menu additions ---

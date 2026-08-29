@@ -110,6 +110,48 @@ def test_direct_formatting_outvotes_the_style_sheet(tmp_path):
     assert fmt.body.space_after_pt == pytest.approx(12, abs=0.5)
 
 
+def test_paragraph_defaults_supply_the_gap(tmp_path):
+    """Modern Word keeps its standard paragraph spacing in
+    docDefaults/pPrDefault, not in the Normal style.  A learner that
+    misses it emits a format with NO paragraph gap — Andrew's 'no
+    full line between paragraphs' printed page."""
+    d = docx.Document()
+    # Strip the template Normal style's own spacing so the defaults
+    # are the only source (when Normal DOES say spacing, it correctly
+    # outranks pPrDefault — that's Word's precedence).
+    normal = d.styles["Normal"].paragraph_format
+    normal.space_after = None
+    normal.line_spacing = None
+    ns = ("{http://schemas.openxmlformats.org/wordprocessingml/2006/"
+          "main}")
+    dd = d.styles.element.find(f"{ns}docDefaults")
+    spacing = dd.find(f"{ns}pPrDefault/{ns}pPr/{ns}spacing")
+    if spacing is None:                  # template variations
+        ppr_default = dd.find(f"{ns}pPrDefault")
+        if ppr_default is None:
+            ppr_default = dd.makeelement(f"{ns}pPrDefault", {})
+            dd.append(ppr_default)
+        ppr = ppr_default.find(f"{ns}pPr")
+        if ppr is None:
+            ppr = ppr_default.makeelement(f"{ns}pPr", {})
+            ppr_default.append(ppr)
+        spacing = ppr.makeelement(f"{ns}spacing", {})
+        ppr.append(spacing)
+    spacing.set(f"{ns}after", "160")
+    spacing.set(f"{ns}line", "278")
+    spacing.set(f"{ns}lineRule", "auto")
+    d.add_paragraph("Body words that carry no direct formatting.")
+    sample = tmp_path / "defaults.docx"
+    d.save(str(sample))
+
+    target = tmp_path / "defaults.wvfmt"
+    target.write_text(learn_format(sample, "Defaults"),
+                      encoding="utf-8")
+    fmt = load_format(target)
+    assert fmt.body.space_after_pt == pytest.approx(8, abs=0.1)
+    assert fmt.body.line_spacing == pytest.approx(278 / 240, abs=0.01)
+
+
 def test_page_number_footer_is_detected(tmp_path):
     """A footer with Word's PAGE field becomes [footer] {page}."""
     sample = tmp_path / "footed.docx"

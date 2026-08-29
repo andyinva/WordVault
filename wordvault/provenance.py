@@ -113,6 +113,7 @@ def build_report(
     editing_seconds: int,
     spelling_rows: list[tuple[str, str, str]],  # (created_utc, typed, corrected)
     program_version: str = "",
+    style_block: str | None = None,     # stylometric consistency, pre-worded
 ) -> str:
     """The Provenance Report as Markdown, ready to save or print."""
     lines: list[str] = []
@@ -186,6 +187,13 @@ def build_report(
     else:
         say("No spelling corrections were recorded for this document.")
     say("")
+
+    # --- stylometric consistency (optional; worded by the caller) --------
+    if style_block:
+        say("## Stylometric consistency")
+        say("")
+        say(style_block)
+        say("")
 
     # --- the statement ----------------------------------------------------
     say("## Statement")

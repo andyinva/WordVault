@@ -81,6 +81,18 @@ def test_report_survives_an_empty_document():
     assert "No spelling corrections" in report
 
 
+def test_style_block_joins_the_report_when_given():
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=0,
+        spelling_rows=[],
+        style_block="Distance 0.84, verdict consistent.")
+    assert "## Stylometric consistency" in report
+    assert "Distance 0.84" in report
+    # And the section sits before the Statement.
+    assert report.index("Stylometric") < report.index("## Statement")
+
+
 def test_format_duration():
     assert format_duration(7380) == "2 h 3 min"
     assert format_duration(240) == "4 min"

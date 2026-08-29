@@ -343,7 +343,26 @@ def learn_format(docx_path: str | Path, name: str) -> str:
             if size is not None:
                 defaults["size_pt"] = int(size.get(f"{W}val")) / 2.0
 
+        # Paragraph DEFAULTS too: modern Word keeps its standard
+        # paragraph spacing in docDefaults/pPrDefault (not in the
+        # Normal style), and a learned format that misses it prints
+        # paragraphs with no gap at all — the "no full line between
+        # paragraphs" report.
+        p_defaults = styles.find(
+            f"{W}docDefaults/{W}pPrDefault/{W}pPr/{W}spacing")
+        if p_defaults is not None:
+            after = p_defaults.get(f"{W}after")
+            line = p_defaults.get(f"{W}line")
+            rule = p_defaults.get(f"{W}lineRule", "auto")
+            if after:
+                defaults["space_after_pt"] = round(int(after) / 20.0, 1)
+            if line and rule == "auto":
+                defaults["line_spacing"] = round(int(line) / 240.0, 2)
+
         body = _style_spec(styles, "Normal", defaults, themes)
+        for key in ("space_after_pt", "line_spacing"):
+            if key not in body and key in defaults:
+                body[key] = defaults[key]
         # The style sheet is only the undercoat: when most of the real
         # body text is direct-formatted (very common — a document whose
         # Normal style says Times New Roman 12 while every visible word

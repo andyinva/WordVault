@@ -448,6 +448,12 @@ each choice is annotated with what it will do (byline, page numbers,
 mirror margins…). The document itself remains innocent of fonts and
 margins.
 
+The same dialog offers **Print only the highlighted selection** — the
+checkbox wakes whenever a passage is selected in the editor. The
+selection rides whatever format you chose: same page, same fonts,
+same headers, just less of the essay — handy for proofing one section
+on paper without spending the whole ream.
+
 ### .wvfmt files
 
 A format is a small, readable TOML file. Your personal copies live in
@@ -603,6 +609,43 @@ that evidence all along. Save it as Markdown, keep it beside the
 essay, or hand it to anyone who asks "did you really write this?" —
 every revision it cites remains in the vault, reopenable on the
 timeline.
+
+### Writing DNA — your style, measured
+
+Every writer leaves habits they do not consciously control, and the
+humblest are the strongest: how often you reach for "of", "and",
+"upon", "which" — the little function words nobody thinks about and
+so nobody can fake. Add sentence rhythm, punctuation habits, word
+length, and vocabulary richness, and a library of essays distills to
+a fingerprint. This is stylometry, the field that settled which
+Federalist Papers Madison wrote; WordVault builds it in.
+
+**Library ▸ Build My Style Profile** reads every document and
+distills your profile (saved beside your library in the personal
+`.wordvault` folder). The build is done twice on purpose: documents
+that read wildly unlike the rest — a stray imported book by another
+author — are set aside in the second pass, so intruders in the vault
+cannot pollute your fingerprint. Rebuild whenever the library has
+grown.
+
+**Library ▸ Review Foreign Documents** scores the whole library
+against your profile and lists it least-like-you first — the honest
+way to find texts by other hands that were swept in during an import.
+You stay the judge: nothing is ever marked automatically. Check the
+confirmed strangers and tag them "Not my writing"; tagged documents
+are excluded from future profile builds.
+
+**Document ▸ Check Against My Norm** scores the open document and —
+the useful part — explains *why*: "sentences run 40% longer than your
+norm, semicolons at triple your rate, 'moreover' far more frequent
+than usual."
+
+When a profile exists, the **Provenance Report** gains a stylometric
+consistency section recording the verdict and which profile produced
+it. One honesty, stated in every screen: the score is a *similarity*
+to your established voice, never a probability of authorship — topic
+pulls on style, which is why function words, nearly topic-proof,
+carry most of the weight.
 
 ### Personal extensions
 
