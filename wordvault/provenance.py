@@ -114,6 +114,7 @@ def build_report(
     spelling_rows: list[tuple[str, str, str]],  # (created_utc, typed, corrected)
     program_version: str = "",
     style_block: str | None = None,     # stylometric consistency, pre-worded
+    pastes: list[tuple] = (),           # (created_utc, words, snippet, comment)
 ) -> str:
     """The Provenance Report as Markdown, ready to save or print."""
     lines: list[str] = []
@@ -172,20 +173,16 @@ def build_report(
         say("")
         for created, added in arrivals:
             say(f"- {_local(created)}: {added:+,} words in one step")
-    say("")
-
-    # --- the human record -------------------------------------------------
-    say("## Corrections along the way")
-    say("")
-    if spelling_rows:
-        say(f"{len(spelling_rows)} misspelling(s) were made and "
-            "corrected while writing this document — the record of "
-            "real hands on real keys:")
+    if pastes:
+        # The writer's own memory of each arrival: what it was and
+        # where it came from, asked at the moment of pasting.
         say("")
-        for created, typed, corrected in spelling_rows:
-            say(f"- {_local(created)}: “{typed}” → “{corrected}”")
-    else:
-        say("No spelling corrections were recorded for this document.")
+        say("Pasted material, in the writer's own words:")
+        say("")
+        for created, words, snippet, comment in pastes:
+            note = (f" — “{comment}”" if comment
+                    else f" (“{snippet[:40]}…”, no note)")
+            say(f"- {_local(created)}: {words} words pasted{note}")
     say("")
 
     # --- stylometric consistency (optional; worded by the caller) --------
@@ -205,5 +202,33 @@ def build_report(
         "can be reopened, compared, and read in the WordVault "
         "timeline. The growth, sessions, arrivals, and corrections "
         "reported here are the document's own record of its making.")
+    if spelling_rows:
+        say("")
+        say("*The spelling corrections made while writing are "
+            "recorded on the next page.*")
+    say("")
+
+    # --- the human record, LAST (page 2 of the printed report) -----------
+    # Compact by request: the corrections flow inline, strung out to
+    # the right (typed → corrected; typed → corrected; …) with one
+    # date SPAN instead of a date per item — the evidence intact, the
+    # report as small as it can be.  The section sits after the
+    # Statement so everything else fits on the first page.
+    say("## Corrections along the way")
+    say("")
+    if spelling_rows:
+        import textwrap
+
+        first = _local(spelling_rows[0][0], "%Y-%m-%d")
+        last = _local(spelling_rows[-1][0], "%Y-%m-%d")
+        span = first if first == last else f"{first} to {last}"
+        say(f"{len(spelling_rows)} misspelling(s) made and corrected "
+            f"({span}) — the record of real hands on real keys:")
+        say("")
+        flow = ";  ".join(f"{typed} → {corrected}"
+                          for _created, typed, corrected in spelling_rows)
+        say(textwrap.fill(flow, width=72))
+    else:
+        say("No spelling corrections were recorded for this document.")
     say("")
     return "\n".join(lines)

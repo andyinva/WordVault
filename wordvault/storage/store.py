@@ -819,6 +819,30 @@ class DocumentStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def log_paste(self, doc_id: int, words: int, snippet: str,
+                  comment: str = "") -> None:
+        """Record one paste into a document — how many words, a
+        glimpse of them, and the writer's own explanation (may be
+        empty; the EVENT is logged regardless, for honesty)."""
+        self._conn.execute(
+            "INSERT INTO paste_log "
+            "(doc_id, created_utc, words, snippet, comment) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (doc_id, _utc_now(), words, snippet, comment),
+        )
+        self._conn.commit()
+
+    def pastes_for_document(self, doc_id: int) -> list[tuple]:
+        """(created_utc, words, snippet, comment) oldest first — the
+        Provenance Report's annotated-arrivals evidence."""
+        rows = self._conn.execute(
+            "SELECT created_utc, words, snippet, comment "
+            "FROM paste_log WHERE doc_id = ? ORDER BY id",
+            (doc_id,),
+        ).fetchall()
+        return [(r["created_utc"], r["words"], r["snippet"],
+                 r["comment"]) for r in rows]
+
     def spelling_for_document(self, doc_id: int) -> list[tuple]:
         """(created_utc, typed, corrected) for every correction made
         while THIS document was open — evidence for the Provenance

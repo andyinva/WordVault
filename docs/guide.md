@@ -622,6 +622,19 @@ line being edited** (a gentle full-width wash under the cursor's line
 on by default, and it politely steps aside in history views), and
 **library encryption**.
 
+### Paste comments — arrivals in your own words
+
+Whenever a sizable passage (ten words or more) is pasted into a
+document, a small box asks: *what is this, and where is it from?*
+Answer in a phrase — "Isaiah 66:15-22 from Bible Search Lite" — and
+the note is recorded in the vault beside the paste's date, size, and
+a glimpse of its words. Months later the Provenance Report hands the
+memory back: its "How the text arrived" section lists each paste in
+your own words, so a large arrival is never a mystery. Leave the box
+blank (or press Escape) and the paste is still recorded, honestly,
+just without a note; tiny pastes — a corrected word, a moved phrase —
+never prompt at all.
+
 ### The Provenance Report
 
 **Document ▸ Provenance Report…** assembles the open document's

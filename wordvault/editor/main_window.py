@@ -348,6 +348,7 @@ class MainWindow(QMainWindow):
         self._editor.pause_detected.connect(self._autosave)
         # The editing clock: counts ACTIVE writing time, not open time.
         self._editor.user_edited.connect(self._on_edit_activity)
+        self._editor.text_pasted.connect(self._on_text_pasted)
         self._edit_clock_doc: Optional[int] = None
         self._edit_last_monotonic: Optional[float] = None
         self._edit_pending = 0.0
@@ -1954,6 +1955,27 @@ class MainWindow(QMainWindow):
             message += f"\n{errors} file(s) could not be read."
         QMessageBox.information(self, "Refresh Formatting", message)
 
+    def _on_text_pasted(self, text: str) -> None:
+        """A sizable paste just landed: ask the writer what it was.
+        The EVENT is logged either way (honesty first); the comment —
+        "Isaiah 66:15-22 from Bible Search Lite" — is the memory the
+        Provenance Report hands back later."""
+        if self._current_doc is None:
+            return
+        words = len(text.split())
+        snippet = " ".join(text.split())[:80]
+        comment, ok = QInputDialog.getText(
+            self, "Pasted Material",
+            f"{words} words arrived by paste:\n\n"
+            f"    “{snippet}…”\n\n"
+            "What is this, and where is it from?  (Recorded for the "
+            "Provenance Report — leave blank to record the paste "
+            "without a note.)",
+        )
+        self._store.log_paste(
+            self._current_doc.id, words, snippet,
+            comment.strip() if ok else "")
+
     def _on_provenance_report(self) -> None:
         """Document ▸ Provenance Report: the construction story of the
         open document, assembled from the vault's own record (growth,
@@ -1988,6 +2010,8 @@ class MainWindow(QMainWindow):
                 # Stage 4 of the Writing-DNA plan: when a profile
                 # exists, the report carries the stylometric verdict.
                 style_block=self._style_block_for(self._current_doc.id),
+                pastes=self._store.pastes_for_document(
+                    self._current_doc.id),
             )
         finally:
             _QApp.restoreOverrideCursor()
@@ -2002,6 +2026,11 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         view = QPlainTextEdit(report, dialog)
         view.setReadOnly(True)
+        # One point smaller than the app font — the report is a
+        # compact record, not reading matter (Andrew's request).
+        font = view.font()
+        font.setPointSize(max(7, font.pointSize() - 1))
+        view.setFont(font)
         layout.addWidget(view)
 
         buttons = QHBoxLayout()
@@ -2020,9 +2049,46 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Report saved: {path}", 6000)
 
         save_btn.clicked.connect(save)
+        word_btn = QPushButton("Save as &Word (.docx)…", dialog)
+
+        def save_word():
+            from PyQt6.QtWidgets import QFileDialog
+
+            try:
+                from wordvault.export_docx import markdown_to_docx
+            except ImportError:
+                QMessageBox.information(
+                    dialog, "Provenance Report",
+                    "Saving as Word needs the python-docx package:\n"
+                    "pip install python-docx")
+                return
+            suggested = f"{self._current_doc.title} — provenance.docx"
+            path, _f = QFileDialog.getSaveFileName(
+                dialog, "Save Provenance Report as Word", suggested,
+                "Word Document (*.docx)")
+            if path:
+                if not path.lower().endswith(".docx"):
+                    path += ".docx"
+                # The sessions table arrives in Word as a REAL table,
+                # and the whole report wears Andrew's compact dress
+                # (8 pt, single spacing, 0.4" margins — learned from
+                # his hand-tuned file) so everything fits one page,
+                # with the spelling corrections starting page 2.
+                markdown_to_docx(
+                    report, path,
+                    title=f"Provenance Report — "
+                          f"{self._current_doc.title}",
+                    author=str(self._settings.value("author", "")),
+                    compact=True,
+                    page_break_before=("Corrections along the way",))
+                self.statusBar().showMessage(f"Report saved: {path}",
+                                             6000)
+
+        word_btn.clicked.connect(save_word)
         close_btn = QPushButton("Close", dialog)
         close_btn.clicked.connect(dialog.accept)
         buttons.addWidget(save_btn)
+        buttons.addWidget(word_btn)
         buttons.addWidget(close_btn)
         layout.addLayout(buttons)
         dialog.exec()

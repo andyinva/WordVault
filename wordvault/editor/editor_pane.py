@@ -58,6 +58,14 @@ class EditorPane(QPlainTextEdit):
     #: document loads) — the editing clock listens to this.
     user_edited = pyqtSignal()
 
+    #: Text arrived by PASTE (the pasted text) — the window asks the
+    #: writer what it was, and the answer becomes provenance evidence.
+    text_pasted = pyqtSignal(str)
+
+    #: Pastes shorter than this many words don't prompt for a comment
+    #: (re-pasting a corrected word is not an "arrival").
+    PASTE_COMMENT_WORDS = 10
+
 
     #: How long a silence counts as "a pause" (DESIGN.md: ~3 seconds).
     IDLE_MS = 3000
@@ -360,6 +368,20 @@ class EditorPane(QPlainTextEdit):
                 self.ensureCursorVisible()
                 return
         super().keyPressEvent(event)
+
+    # -- paste funnel ---------------------------------------------------------
+
+    def insertFromMimeData(self, source) -> None:  # noqa: N802 (Qt naming)
+        """EVERY paste route (Ctrl+V, the context menu, middle-click)
+        funnels through here.  After the text lands, a sizable paste
+        announces itself so the window can ask the writer what it was
+        — the answer becomes the Provenance Report's annotated-arrival
+        evidence ("Isaiah 66 from Bible Search Lite")."""
+        text = source.text() if source.hasText() else ""
+        super().insertFromMimeData(source)
+        if (text and not self._suppress_signals and not self.isReadOnly()
+                and len(text.split()) >= self.PASTE_COMMENT_WORDS):
+            self.text_pasted.emit(text)
 
     # -- paragraph return (Settings) -----------------------------------------
 

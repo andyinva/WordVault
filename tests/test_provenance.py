@@ -96,3 +96,35 @@ def test_style_block_joins_the_report_when_given():
 def test_format_duration():
     assert format_duration(7380) == "2 h 3 min"
     assert format_duration(240) == "4 min"
+
+
+def test_corrections_sit_last_with_a_signpost():
+    """Page-one economy: everything else precedes the corrections, and
+    the Statement tells the reader where to find them."""
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=60,
+        spelling_rows=[(_t(1, 9, 5), "teh", "the")],
+        style_block="Distance 0.9, consistent.")
+    order = [report.index(h) for h in (
+        "## The document", "## The sessions", "## How the text arrived",
+        "## Stylometric consistency", "## Statement",
+        "## Corrections along the way")]
+    assert order == sorted(order)
+    assert "recorded on the next page" in report
+
+
+def test_pasted_material_speaks_in_the_writers_words():
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=0,
+        spelling_rows=[],
+        pastes=[(_t(1, 9, 30), 54, "For behold, the Lord will come",
+                 "Isaiah 66:15-22 from Bible Search Lite"),
+                (_t(2, 10), 30, "and the wall of the city", "")])
+    assert "Pasted material, in the writer's own words:" in report
+    assert "54 words pasted — “Isaiah 66:15-22 from Bible Search "\
+           "Lite”" in report
+    # An uncommented paste is still shown, honestly, with its glimpse.
+    assert "30 words pasted (“and the wall of the city…”, no note)" \
+        in report

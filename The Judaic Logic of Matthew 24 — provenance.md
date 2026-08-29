@@ -1,14 +1,14 @@
 # Provenance Report — The Judaic Logic of Matthew 24
 
-Generated August 27, 2026 at 07:56 by WordVault 1.0 from the document's own history.
+Generated August 29, 2026 at 15:07 by WordVault 1.0 from the document's own history.
 
 ## The document
 
 - Created: 2026-08-18 14:16
-- Revisions preserved: 1935
-- Words today: 4,421
-- Writing sessions: 23, across 9 different day(s)
-- Active writing time (hands on keys): 6 h 22 min
+- Revisions preserved: 2279
+- Words today: 5,012
+- Writing sessions: 29, across 10 different day(s)
+- Active writing time (hands on keys): 8 h 7 min
 
 ## The sessions
 
@@ -39,10 +39,16 @@ Each line is one sitting — revisions separated by less than 30 minutes of sile
 | 21 | 2026-08-26 19:08 | 19:11 | 12 | 3,958 → 3,959 | +1 |
 | 22 | 2026-08-26 19:51 | 20:01 | 19 | 3,959 → 3,938 | -21 |
 | 23 | 2026-08-27 05:05 | 07:23 | 257 | 3,938 → 4,421 | +483 |
+| 24 | 2026-08-27 13:59 | 14:17 | 45 | 4,421 → 4,419 | -2 |
+| 25 | 2026-08-27 14:49 | 14:59 | 30 | 4,419 → 4,429 | +10 |
+| 26 | 2026-08-28 01:28 | 02:22 | 156 | 4,429 → 5,016 | +587 |
+| 27 | 2026-08-28 14:03 | 14:09 | 11 | 5,016 → 5,046 | +30 |
+| 28 | 2026-08-28 17:22 | 17:24 | 6 | 5,046 → 5,034 | -12 |
+| 29 | 2026-08-28 18:58 | 19:41 | 96 | 5,034 → 5,012 | -22 |
 
 ## How the text arrived
 
-Of 1935 preserved revisions, 1932 grew by typing-sized steps (under 200 words each).
+Of 2279 preserved revisions, 2276 grew by typing-sized steps (under 200 words each).
 
 2 revision(s) brought more than 200 words at once — imports, pasted material, or a long uninterrupted pour:
 
@@ -51,400 +57,162 @@ Of 1935 preserved revisions, 1932 grew by typing-sized steps (under 200 words ea
 
 ## Corrections along the way
 
-392 misspelling(s) were made and corrected while writing this document — the record of real hands on real keys:
+463 misspelling(s) made and corrected (2026-08-18 to 2026-08-28) — the record of real hands on real keys:
 
-- 2026-08-18 14:22: “interprest” → “interpret”
-- 2026-08-18 14:22: “interprest” → “interpret”
-- 2026-08-18 14:22: “contsructed” → “constructed”
-- 2026-08-18 14:22: “contsructed” → “constructed”
-- 2026-08-18 14:22: “resoning” → “reasoning”
-- 2026-08-18 14:22: “resoning” → “reasoning”
-- 2026-08-18 14:23: “reasonings” → “reasoning's”
-- 2026-08-18 14:23: “reasonings” → “reasoning's”
-- 2026-08-18 14:26: “attpent” → “attempt”
-- 2026-08-18 14:28: “aquanted” → “acquainted”
-- 2026-08-18 14:28: “aquanted” → “acquainted”
-- 2026-08-18 14:29: “enouph” → “enough”
-- 2026-08-18 14:29: “enouph” → “enough”
-- 2026-08-18 14:29: “convay” → “convey”
-- 2026-08-18 14:29: “convay” → “convey”
-- 2026-08-18 14:29: “consept” → “concept”
-- 2026-08-18 14:29: “consept” → “concept”
-- 2026-08-18 14:30: “Biblia” → “Biblical”
-- 2026-08-18 14:32: “conspets” → “concepts”
-- 2026-08-18 14:32: “conspets” → “concepts”
-- 2026-08-18 14:33: “identiy” → “identify”
-- 2026-08-18 14:33: “identiy” → “identify”
-- 2026-08-18 14:37: “Biblica” → “Biblical”
-- 2026-08-18 15:02: “reasoningconcepts” → “concepts”
-- 2026-08-18 15:07: “identifed” → “identified”
-- 2026-08-18 15:07: “identifed” → “identified”
-- 2026-08-18 15:12: “conspets” → “concepts”
-- 2026-08-18 15:17: “consepts” → “concepts”
-- 2026-08-18 15:17: “consepts” → “Concepts”
-- 2026-08-18 15:27: “clearity” → “clarity”
-- 2026-08-18 15:27: “clearity” → “clarity”
-- 2026-08-18 15:34: “harves” → “harvest”
-- 2026-08-18 15:34: “harves” → “harvest”
-- 2026-08-18 15:34: “Jubelee” → “Jubilee”
-- 2026-08-18 15:34: “Jubelee” → “Jubilee”
-- 2026-08-18 15:34: “trumpted” → “trumped”
-- 2026-08-18 15:34: “trumpted” → “trumped”
-- 2026-08-18 15:48: “gentirle” → “gentile”
-- 2026-08-18 15:48: “naitions” → “nations”
-- 2026-08-18 15:48: “gentirle” → “gentile”
-- 2026-08-18 15:48: “naitions” → “nations”
-- 2026-08-18 15:53: “trumpts” → “trumps”
-- 2026-08-18 15:53: “trumpts” → “trumps”
-- 2026-08-18 15:57: “Jebalee” → “Jubilee”
-- 2026-08-18 15:57: “Jebalee” → “Jubilee”
-- 2026-08-18 15:57: “trumpt” → “trump”
-- 2026-08-18 15:57: “trumpt” → “trump”
-- 2026-08-18 15:57: “Jebilee” → “Jubilee”
-- 2026-08-18 15:57: “Jebilee” → “Jubilee”
-- 2026-08-18 15:58: “celabrate” → “celebrate”
-- 2026-08-18 15:58: “celabrate” → “celebrate”
-- 2026-08-18 16:00: “explanion” → “explanation”
-- 2026-08-18 16:00: “explanion” → “explanation”
-- 2026-08-18 16:04: “relaation” → “relation”
-- 2026-08-18 16:05: “inheratance” → “inheritance”
-- 2026-08-18 16:05: “inheratance” → “inheritance”
-- 2026-08-18 16:05: “duirng” → “during”
-- 2026-08-18 16:05: “duirng” → “during”
-- 2026-08-18 16:10: “responce” → “response”
-- 2026-08-18 16:10: “responce” → “response”
-- 2026-08-18 16:14: “acomplished” → “accomplished”
-- 2026-08-18 16:14: “acomplished” → “accomplished”
-- 2026-08-18 16:21: “trumpt” → “trump”
-- 2026-08-18 16:23: “trumpt” → “trump”
-- 2026-08-18 16:25: “captiviy” → “captivity”
-- 2026-08-18 16:25: “captiviy” → “captivity”
-- 2026-08-18 16:25: “naother” → “another”
-- 2026-08-18 16:26: “compleation” → “completion”
-- 2026-08-18 16:26: “Juebilee” → “Jubilee”
-- 2026-08-18 16:26: “compleation” → “completion”
-- 2026-08-18 16:26: “Juebilee” → “Jubilee”
-- 2026-08-18 16:26: “captiviy” → “captivity”
-- 2026-08-18 16:26: “captiviy” → “captivity”
-- 2026-08-18 16:26: “camptive” → “captive”
-- 2026-08-18 16:26: “sabbeth” → “sabbath”
-- 2026-08-18 16:26: “sabbeth” → “sabbath”
-- 2026-08-18 17:04: “reasonng” → “reasoning”
-- 2026-08-18 17:04: “reasonng” → “reasoning”
-- 2026-08-18 17:06: “pictring” → “picturing”
-- 2026-08-18 17:07: “int” → “in”
-- 2026-08-18 17:07: “pictring” → “picturing”
-- 2026-08-18 17:07: “pristly” → “priestly”
-- 2026-08-18 17:07: “pristly” → “priestly”
-- 2026-08-18 17:09: “triblation” → “tribulation”
-- 2026-08-18 17:09: “triblation” → “tribulation”
-- 2026-08-18 17:15: “sanctuarly” → “sanctuary”
-- 2026-08-18 17:15: “sanctuarly” → “sanctuary”
-- 2026-08-18 17:15: “lcoation” → “location”
-- 2026-08-18 17:15: “lcoation” → “location”
-- 2026-08-18 17:15: “lcoation” → “location”
-- 2026-08-18 17:19: “throughly” → “thoroughly”
-- 2026-08-18 17:19: “throughly” → “thoroughly”
-- 2026-08-18 17:24: “angele” → “angel”
-- 2026-08-18 17:27: “cuting” → “cutting”
-- 2026-08-18 17:27: “sactivfied” → “satisfied”
-- 2026-08-18 17:27: “sactivfied” → “satisfied”
-- 2026-08-18 17:28: “ths” → “this”
-- 2026-08-19 14:58: “consepts” → “Concepts”
-- 2026-08-19 15:02: “secsion” → “section”
-- 2026-08-19 15:02: “secsion” → “section”
-- 2026-08-19 15:29: “welth” → “wealth”
-- 2026-08-19 15:29: “infmoration” → “information”
-- 2026-08-19 15:29: “infmoration” → “information”
-- 2026-08-19 15:33: “persuecuiton” → “persecution”
-- 2026-08-19 15:33: “persuecuiton” → “persecution”
-- 2026-08-19 15:35: “enemys” → “enemy”
-- 2026-08-19 15:35: “enemys” → “enemy”
-- 2026-08-20 07:47: “similatude” → “similitude”
-- 2026-08-20 07:47: “similatude” → “similitude”
-- 2026-08-20 07:47: “oint” → “point”
-- 2026-08-20 07:47: “oint” → “point”
-- 2026-08-20 07:47: “pristly” → “priestly”
-- 2026-08-20 07:47: “pristly” → “priestly”
-- 2026-08-20 07:47: “desided” → “decided”
-- 2026-08-20 07:47: “desided” → “decided”
-- 2026-08-20 07:47: “complet” → “complete”
-- 2026-08-20 07:47: “complet” → “complete”
-- 2026-08-20 07:47: “complet” → “complete”
-- 2026-08-20 07:47: “complet” → “complete”
-- 2026-08-20 07:50: “perons” → “persons”
-- 2026-08-20 17:58: “Imagen” → “Image”
-- 2026-08-20 17:59: “Imagin” → “Imagine”
-- 2026-08-20 17:59: “Imagin” → “Imagine”
-- 2026-08-20 19:07: “praticulaer” → “particular”
-- 2026-08-20 19:07: “praticulaer” → “particular”
-- 2026-08-20 19:07: “intrest” → “interest”
-- 2026-08-20 19:07: “intrest” → “interest”
-- 2026-08-20 19:16: “desolet” → “desolate”
-- 2026-08-20 19:17: “discution” → “discussion”
-- 2026-08-20 19:24: “fremament” → “firmament”
-- 2026-08-20 19:24: “fremament” → “firmament”
-- 2026-08-20 19:25: “frosake” → “forsake”
-- 2026-08-20 19:25: “frosake” → “forsake”
-- 2026-08-20 19:25: “tribultion” → “tribulation”
-- 2026-08-20 19:25: “tribultion” → “tribulation”
-- 2026-08-20 19:34: “scatterig” → “scattering”
-- 2026-08-20 19:37: “frumament” → “armament”
-- 2026-08-20 19:37: “frumament” → “armament”
-- 2026-08-20 19:37: “reders” → “renders”
-- 2026-08-20 19:37: “reders” → “renders”
-- 2026-08-20 19:38: “aganst” → “against”
-- 2026-08-20 19:38: “aganst” → “against”
-- 2026-08-20 19:39: “anchent” → “ancient”
-- 2026-08-20 19:39: “anchent” → “ancient”
-- 2026-08-20 19:39: “verifeid” → “verified”
-- 2026-08-20 19:39: “verifeid” → “verified”
-- 2026-08-20 19:42: “Maichael” → “Michael”
-- 2026-08-20 19:44: “anchent” → “ancient”
-- 2026-08-20 19:44: “esorted” → “escorted”
-- 2026-08-20 19:48: “Ths” → “This”
-- 2026-08-20 20:05: “abominiaton” → “abomination”
-- 2026-08-20 20:10: “standeth” → “stands”
-- 2026-08-20 20:19: “imediatly” → “immediately”
-- 2026-08-20 20:19: “imediatly” → “immediately”
-- 2026-08-22 20:24: “descreat” → “discreet”
-- 2026-08-22 20:24: “descreat” → “discreet”
-- 2026-08-22 20:24: “deepth” → “depth”
-- 2026-08-22 20:24: “deepth” → “depth”
-- 2026-08-22 20:25: “preceed” → “proceed”
-- 2026-08-22 20:25: “preceed” → “proceed”
-- 2026-08-22 20:27: “tribualtion” → “tribulation”
-- 2026-08-22 20:27: “tribualtion” → “tribulation”
-- 2026-08-22 20:28: “terestrial” → “terrestrial”
-- 2026-08-22 20:28: “armys” → “army's”
-- 2026-08-22 20:29: “perseuction” → “persecution”
-- 2026-08-22 20:29: “perseuction” → “persecution”
-- 2026-08-22 20:30: “desciple” → “disciple”
-- 2026-08-22 20:30: “desciple” → “disciple”
-- 2026-08-22 20:31: “intervetion” → “intervention”
-- 2026-08-22 20:32: “intervetion” → “intervention”
-- 2026-08-22 20:32: “tribuation” → “tribulation”
-- 2026-08-22 20:32: “tribuation” → “tribulation”
-- 2026-08-22 20:38: “taberancle” → “tabernacle”
-- 2026-08-22 20:38: “taberancle” → “tabernacle”
-- 2026-08-22 20:46: “perticularly” → “particularly”
-- 2026-08-22 20:46: “perticularly” → “particularly”
-- 2026-08-22 20:46: “langauge” → “language”
-- 2026-08-22 20:46: “langauge” → “language”
-- 2026-08-22 20:46: “fuction” → “function”
-- 2026-08-22 20:46: “fuction” → “function”
-- 2026-08-22 20:46: “celestila” → “celestial”
-- 2026-08-22 20:47: “celestila” → “celestial”
-- 2026-08-22 20:47: “assosated” → “assisted”
-- 2026-08-22 20:47: “assosated” → “assisted”
-- 2026-08-22 20:48: “globel” → “global”
-- 2026-08-22 20:48: “globel” → “global”
-- 2026-08-22 20:49: “preceeded” → “proceeded”
-- 2026-08-22 20:49: “preceeded” → “proceeded”
-- 2026-08-22 20:49: “invloving” → “involving”
-- 2026-08-22 20:49: “invloving” → “involving”
-- 2026-08-22 20:51: “invloved” → “involved”
-- 2026-08-22 20:51: “tribualtion” → “tribulation”
-- 2026-08-22 20:54: “globel” → “global”
-- 2026-08-22 20:58: “heavely” → “heavily”
-- 2026-08-22 20:58: “heavely” → “heavily”
-- 2026-08-22 20:58: “convlice” → “conflict”
-- 2026-08-22 20:58: “taberancle” → “tabernacle”
-- 2026-08-22 20:59: “carriing” → “carrying”
-- 2026-08-22 20:59: “carriing” → “carrying”
-- 2026-08-22 21:01: “inheratance” → “inheritance”
-- 2026-08-22 21:06: “sepeak” → “speak”
-- 2026-08-22 21:06: “sepeak” → “speak”
-- 2026-08-24 16:42: “Succot” → “Succoth”
-- 2026-08-24 16:42: “Succot” → “Succoth”
-- 2026-08-24 17:35: “arrying” → “carrying”
-- 2026-08-24 18:08: “taberancle” → “tabernacle”
-- 2026-08-24 18:23: “realted” → “related”
-- 2026-08-24 18:23: “realted” → “related”
-- 2026-08-24 18:24: “realted” → “related”
-- 2026-08-24 18:24: “particulary” → “particularly”
-- 2026-08-24 18:24: “particulary” → “particularly”
-- 2026-08-24 18:35: “similarites” → “similarities”
-- 2026-08-24 18:35: “similarites” → “similarities”
-- 2026-08-24 18:38: “importatn” → “importation”
-- 2026-08-24 18:38: “importatn” → “importation”
-- 2026-08-24 18:43: “liberations” → “liberation's”
-- 2026-08-24 18:43: “liberations” → “liberation's”
-- 2026-08-24 18:49: “ingatheriing” → “ingathering”
-- 2026-08-24 18:50: “ingatheriing” → “ingathering”
-- 2026-08-24 18:59: “Isreal” → “Israel”
-- 2026-08-24 19:43: “mirro” → “mirror”
-- 2026-08-24 19:43: “mirro” → “mirror”
-- 2026-08-24 19:44: “respets” → “respects”
-- 2026-08-24 19:48: “captivit” → “captivity”
-- 2026-08-24 19:48: “captivit” → “captivity”
-- 2026-08-24 20:01: “aparent” → “apparent”
-- 2026-08-24 20:01: “aparent” → “apparent”
-- 2026-08-24 20:01: “slavry” → “slavery”
-- 2026-08-24 20:01: “slavry” → “slavery”
-- 2026-08-24 20:01: “witht” → “with”
-- 2026-08-24 20:01: “Tte” → “the”
-- 2026-08-24 20:02: “apppoints” → “points”
-- 2026-08-24 20:02: “witht” → “with”
-- 2026-08-24 20:02: “assosiated” → “associated”
-- 2026-08-24 20:02: “assosiated” → “associated”
-- 2026-08-24 20:03: “aquanted” → “acquainted”
-- 2026-08-24 20:03: “aqujited” → “acquainted”
-- 2026-08-24 20:03: “ith” → “with”
-- 2026-08-24 20:04: “festivle” → “festival”
-- 2026-08-24 20:04: “festivle” → “festival”
-- 2026-08-24 20:05: “harves” → “harvest”
-- 2026-08-24 20:09: “throught” → “thought”
-- 2026-08-24 20:09: “decleard” → “declared”
-- 2026-08-24 20:09: “decleard” → “declared”
-- 2026-08-24 20:25: “begans” → “began”
-- 2026-08-24 20:27: “compay” → “company”
-- 2026-08-24 20:27: “compay” → “company”
-- 2026-08-24 20:28: “frorm” → “from”
-- 2026-08-24 20:35: “kindrend” → “kindred”
-- 2026-08-24 20:35: “kindrend” → “kindred”
-- 2026-08-24 20:35: “tonges” → “tongues”
-- 2026-08-24 20:35: “tonges” → “tongues”
-- 2026-08-25 13:53: “agrictural” → “agricultural”
-- 2026-08-25 13:53: “seasin” → “season”
-- 2026-08-25 13:56: “shief” → “sheaf”
-- 2026-08-25 13:56: “shief” → “sheaf”
-- 2026-08-25 13:58: “planged” → “planted”
-- 2026-08-25 13:59: “harvens” → “harvest”
-- 2026-08-25 13:59: “celebarted” → “celebrated”
-- 2026-08-25 14:01: “corispondes” → “corresponds”
-- 2026-08-25 14:01: “corispondes” → “corresponds”
-- 2026-08-25 14:10: “natios” → “nations”
-- 2026-08-25 14:12: “lsavory” → “savory”
-- 2026-08-25 14:12: “slavory” → “slavery”
-- 2026-08-25 14:12: “slavory” → “slavery”
-- 2026-08-25 14:12: “intened” → “intended”
-- 2026-08-25 14:14: “declearation” → “declaration”
-- 2026-08-25 14:14: “declearation” → “declaration”
-- 2026-08-25 14:17: “kindreds” → “kindred's”
-- 2026-08-25 14:17: “kindreds” → “kindred's”
-- 2026-08-25 14:21: “Exo” → “Exodus”
-- 2026-08-25 14:31: “tanbernacles” → “tabernacles”
-- 2026-08-25 14:32: “tanbernacles” → “tabernacles”
-- 2026-08-25 14:32: “Int” → “In”
-- 2026-08-25 14:33: “requjired” → “required”
-- 2026-08-25 14:33: “requjired” → “required”
-- 2026-08-25 14:34: “commeorte” → “commemorate”
-- 2026-08-25 14:34: “commeorte” → “commemorate”
-- 2026-08-25 14:58: “celbared” → “celebrate”
-- 2026-08-25 14:58: “celbared” → “celebrate”
-- 2026-08-25 15:18: “Zec” → “Zechariah”
-- 2026-08-25 15:29: “prepeariton” → “preparation”
-- 2026-08-25 15:30: “prepeariton” → “preparation”
-- 2026-08-25 15:30: “corispond” → “correspond”
-- 2026-08-25 15:30: “corispond” → “correspond”
-- 2026-08-25 15:32: “durng” → “during”
-- 2026-08-25 15:33: “tabernccle” → “tabernacle”
-- 2026-08-25 15:33: “tabernccle” → “tabernacle”
-- 2026-08-25 15:33: “receve” → “receive”
-- 2026-08-25 15:33: “receve” → “receive”
-- 2026-08-25 15:36: “Levites” → “Levite”
-- 2026-08-25 15:36: “Levites” → “Levite”
-- 2026-08-25 16:14: “Jebilee” → “Jubilee”
-- 2026-08-25 16:14: “Jebilee” → “Jubilee”
-- 2026-08-25 16:17: “translsed” → “translated”
-- 2026-08-25 16:17: “translsed” → “translated”
-- 2026-08-25 16:28: “moltatud” → “multitude”
-- 2026-08-25 16:28: “moltatud” → “multitude”
-- 2026-08-25 16:31: “Youngs” → “Young's”
-- 2026-08-25 16:31: “Youngs” → “Young's”
-- 2026-08-25 16:31: “Youngs” → “Young's”
-- 2026-08-25 16:31: “Youngs” → “Young's”
-- 2026-08-25 16:31: “transliaton” → “translation”
-- 2026-08-25 16:31: “transliaton” → “translation”
-- 2026-08-25 16:39: “forturs” → “fortress”
-- 2026-08-25 16:39: “forturs” → “fortress”
-- 2026-08-25 16:39: “enclusing” → “enclosing”
-- 2026-08-25 16:39: “enclusing” → “enclosing”
-- 2026-08-25 20:14: “int” → “in”
-- 2026-08-25 20:14: “nationc” → “nation”
-- 2026-08-25 20:16: “enemys” → “enemy”
-- 2026-08-25 20:19: “Canaanties” → “Canaanites”
-- 2026-08-25 20:19: “poeriod” → “period”
-- 2026-08-25 20:19: “poeriod” → “period”
-- 2026-08-25 20:23: “parttern” → “pattern”
-- 2026-08-25 20:23: “parttern” → “pattern”
-- 2026-08-25 20:26: “domion” → “dominion”
-- 2026-08-25 20:28: “Deaper” → “Deeper”
-- 2026-08-25 20:28: “Deaper” → “Deeper”
-- 2026-08-25 20:28: “mianing” → “meaning”
-- 2026-08-25 20:28: “mianing” → “meaning”
-- 2026-08-25 20:30: “Meaining” → “Meaning”
-- 2026-08-25 20:30: “Meaining” → “Meaning”
-- 2026-08-26 14:10: “witht” → “with”
-- 2026-08-26 14:10: “liberbation” → “liberation”
-- 2026-08-26 14:10: “liberbation” → “liberation”
-- 2026-08-26 14:10: “assosited” → “assisted”
-- 2026-08-26 14:10: “assosited” → “assisted”
-- 2026-08-26 14:10: “tabernatcles” → “tabernacles”
-- 2026-08-26 14:10: “tabernatcles” → “tabernacles”
-- 2026-08-26 14:12: “assosiated” → “associated”
-- 2026-08-26 14:12: “assosiisted” → “associated”
-- 2026-08-26 14:15: “tabels” → “tables”
-- 2026-08-26 14:15: “tabels” → “tables”
-- 2026-08-26 19:11: “imposistion” → “imposition”
-- 2026-08-26 19:11: “imposistion” → “imposition”
-- 2026-08-26 19:55: “Jerumiah” → “Jeremiah”
-- 2026-08-26 19:55: “Jerumiah's” → “Jeremiah's”
-- 2026-08-27 05:14: “discution” → “discussion”
-- 2026-08-27 05:34: “discution” → “discussion”
-- 2026-08-27 05:36: “destrcution” → “destruction”
-- 2026-08-27 05:36: “destrcution” → “destruction”
-- 2026-08-27 05:42: “int” → “in”
-- 2026-08-27 05:49: “presnts” → “presents”
-- 2026-08-27 05:49: “presnts” → “presents”
-- 2026-08-27 06:12: “Dueteronamy” → “Deuteronomy”
-- 2026-08-27 06:12: “Dueteronamy” → “Deuteronomy”
-- 2026-08-27 06:15: “suplant” → “supplant”
-- 2026-08-27 06:15: “Canananites” → “Canaanites”
-- 2026-08-27 06:15: “suplant” → “supplant”
-- 2026-08-27 06:15: “Canananites” → “Canaanites”
-- 2026-08-27 06:24: “discusion” → “discussion”
-- 2026-08-27 06:24: “discusion” → “discussion”
-- 2026-08-27 06:25: “deliberetly” → “deliberately”
-- 2026-08-27 06:28: “taberancle” → “tabernacle”
-- 2026-08-27 06:29: “represnts” → “represents”
-- 2026-08-27 06:29: “represnts” → “represents”
-- 2026-08-27 06:31: “statments” → “statements”
-- 2026-08-27 06:31: “statments” → “statements”
-- 2026-08-27 06:37: “appling” → “applying”
-- 2026-08-27 06:37: “appling” → “applying”
-- 2026-08-27 06:39: “tabernel” → “tabernacle”
-- 2026-08-27 06:41: “tabernacla” → “tabernacle”
-- 2026-08-27 06:49: “beging” → “begging”
-- 2026-08-27 06:49: “beging” → “begging”
-- 2026-08-27 06:49: “statment” → “statement”
-- 2026-08-27 06:50: “statment” → “statement”
-- 2026-08-27 06:50: “possessin” → “possession”
-- 2026-08-27 06:50: “possessin” → “possession”
-- 2026-08-27 06:50: “interveation” → “intervention”
-- 2026-08-27 06:50: “interveation” → “intervention”
-- 2026-08-27 06:51: “reperesnt” → “represent”
-- 2026-08-27 06:51: “reperesnt” → “represent”
-- 2026-08-27 06:52: “Isaels” → “Israels”
-- 2026-08-27 06:54: “suplante” → “supplant”
-- 2026-08-27 06:54: “suplante” → “supplant”
-- 2026-08-27 06:56: “globel” → “global”
-- 2026-08-27 06:56: “immplciations” → “implications”
-- 2026-08-27 06:56: “immplciations” → “implications”
-- 2026-08-27 07:00: “scholers” → “scholars”
-- 2026-08-27 07:00: “scholers” → “scholars”
-- 2026-08-27 07:09: “sanario” → “scenario”
-- 2026-08-27 07:09: “sanario” → “scenario”
-- 2026-08-27 07:11: “prophesys” → “prophesy's”
-- 2026-08-27 07:11: “Daiel” → “Daniel”
-- 2026-08-27 07:11: “exapnd” → “expand”
-- 2026-08-27 07:11: “exapnd” → “expand”
-- 2026-08-27 07:19: “hasnting” → “hasting”
-- 2026-08-27 07:20: “hasning” → “hsining”
-- 2026-08-27 07:20: “hasning” → “hsining”
-- 2026-08-27 07:20: “hasening” → “hastening”
-- 2026-08-27 07:21: “hasening” → “hastening”
+interprest → interpret;  interprest → interpret;  contsructed →
+constructed;  contsructed → constructed;  resoning → reasoning;
+resoning → reasoning;  reasonings → reasoning's;  reasonings →
+reasoning's;  attpent → attempt;  aquanted → acquainted;  aquanted →
+acquainted;  enouph → enough;  enouph → enough;  convay → convey;
+convay → convey;  consept → concept;  consept → concept;  Biblia →
+Biblical;  conspets → concepts;  conspets → concepts;  identiy →
+identify;  identiy → identify;  Biblica → Biblical;  reasoningconcepts →
+concepts;  identifed → identified;  identifed → identified;  conspets →
+concepts;  consepts → concepts;  consepts → Concepts;  clearity →
+clarity;  clearity → clarity;  harves → harvest;  harves → harvest;
+Jubelee → Jubilee;  Jubelee → Jubilee;  trumpted → trumped;  trumpted →
+trumped;  gentirle → gentile;  naitions → nations;  gentirle → gentile;
+naitions → nations;  trumpts → trumps;  trumpts → trumps;  Jebalee →
+Jubilee;  Jebalee → Jubilee;  trumpt → trump;  trumpt → trump;  Jebilee
+→ Jubilee;  Jebilee → Jubilee;  celabrate → celebrate;  celabrate →
+celebrate;  explanion → explanation;  explanion → explanation;
+relaation → relation;  inheratance → inheritance;  inheratance →
+inheritance;  duirng → during;  duirng → during;  responce → response;
+responce → response;  acomplished → accomplished;  acomplished →
+accomplished;  trumpt → trump;  trumpt → trump;  captiviy → captivity;
+captiviy → captivity;  naother → another;  compleation → completion;
+Juebilee → Jubilee;  compleation → completion;  Juebilee → Jubilee;
+captiviy → captivity;  captiviy → captivity;  camptive → captive;
+sabbeth → sabbath;  sabbeth → sabbath;  reasonng → reasoning;  reasonng
+→ reasoning;  pictring → picturing;  int → in;  pictring → picturing;
+pristly → priestly;  pristly → priestly;  triblation → tribulation;
+triblation → tribulation;  sanctuarly → sanctuary;  sanctuarly →
+sanctuary;  lcoation → location;  lcoation → location;  lcoation →
+location;  throughly → thoroughly;  throughly → thoroughly;  angele →
+angel;  cuting → cutting;  sactivfied → satisfied;  sactivfied →
+satisfied;  ths → this;  consepts → Concepts;  secsion → section;
+secsion → section;  welth → wealth;  infmoration → information;
+infmoration → information;  persuecuiton → persecution;  persuecuiton →
+persecution;  enemys → enemy;  enemys → enemy;  similatude → similitude;
+similatude → similitude;  oint → point;  oint → point;  pristly →
+priestly;  pristly → priestly;  desided → decided;  desided → decided;
+complet → complete;  complet → complete;  complet → complete;  complet →
+complete;  perons → persons;  Imagen → Image;  Imagin → Imagine;  Imagin
+→ Imagine;  praticulaer → particular;  praticulaer → particular;
+intrest → interest;  intrest → interest;  desolet → desolate;  discution
+→ discussion;  fremament → firmament;  fremament → firmament;  frosake →
+forsake;  frosake → forsake;  tribultion → tribulation;  tribultion →
+tribulation;  scatterig → scattering;  frumament → armament;  frumament
+→ armament;  reders → renders;  reders → renders;  aganst → against;
+aganst → against;  anchent → ancient;  anchent → ancient;  verifeid →
+verified;  verifeid → verified;  Maichael → Michael;  anchent → ancient;
+esorted → escorted;  Ths → This;  abominiaton → abomination;  standeth →
+stands;  imediatly → immediately;  imediatly → immediately;  descreat →
+discreet;  descreat → discreet;  deepth → depth;  deepth → depth;
+preceed → proceed;  preceed → proceed;  tribualtion → tribulation;
+tribualtion → tribulation;  terestrial → terrestrial;  armys → army's;
+perseuction → persecution;  perseuction → persecution;  desciple →
+disciple;  desciple → disciple;  intervetion → intervention;
+intervetion → intervention;  tribuation → tribulation;  tribuation →
+tribulation;  taberancle → tabernacle;  taberancle → tabernacle;
+perticularly → particularly;  perticularly → particularly;  langauge →
+language;  langauge → language;  fuction → function;  fuction →
+function;  celestila → celestial;  celestila → celestial;  assosated →
+assisted;  assosated → assisted;  globel → global;  globel → global;
+preceeded → proceeded;  preceeded → proceeded;  invloving → involving;
+invloving → involving;  invloved → involved;  tribualtion → tribulation;
+globel → global;  heavely → heavily;  heavely → heavily;  convlice →
+conflict;  taberancle → tabernacle;  carriing → carrying;  carriing →
+carrying;  inheratance → inheritance;  sepeak → speak;  sepeak → speak;
+Succot → Succoth;  Succot → Succoth;  arrying → carrying;  taberancle →
+tabernacle;  realted → related;  realted → related;  realted → related;
+particulary → particularly;  particulary → particularly;  similarites →
+similarities;  similarites → similarities;  importatn → importation;
+importatn → importation;  liberations → liberation's;  liberations →
+liberation's;  ingatheriing → ingathering;  ingatheriing → ingathering;
+Isreal → Israel;  mirro → mirror;  mirro → mirror;  respets → respects;
+captivit → captivity;  captivit → captivity;  aparent → apparent;
+aparent → apparent;  slavry → slavery;  slavry → slavery;  witht → with;
+Tte → the;  apppoints → points;  witht → with;  assosiated → associated;
+assosiated → associated;  aquanted → acquainted;  aqujited → acquainted;
+ith → with;  festivle → festival;  festivle → festival;  harves →
+harvest;  throught → thought;  decleard → declared;  decleard →
+declared;  begans → began;  compay → company;  compay → company;  frorm
+→ from;  kindrend → kindred;  kindrend → kindred;  tonges → tongues;
+tonges → tongues;  agrictural → agricultural;  seasin → season;  shief →
+sheaf;  shief → sheaf;  planged → planted;  harvens → harvest;
+celebarted → celebrated;  corispondes → corresponds;  corispondes →
+corresponds;  natios → nations;  lsavory → savory;  slavory → slavery;
+slavory → slavery;  intened → intended;  declearation → declaration;
+declearation → declaration;  kindreds → kindred's;  kindreds →
+kindred's;  Exo → Exodus;  tanbernacles → tabernacles;  tanbernacles →
+tabernacles;  Int → In;  requjired → required;  requjired → required;
+commeorte → commemorate;  commeorte → commemorate;  celbared →
+celebrate;  celbared → celebrate;  Zec → Zechariah;  prepeariton →
+preparation;  prepeariton → preparation;  corispond → correspond;
+corispond → correspond;  durng → during;  tabernccle → tabernacle;
+tabernccle → tabernacle;  receve → receive;  receve → receive;  Levites
+→ Levite;  Levites → Levite;  Jebilee → Jubilee;  Jebilee → Jubilee;
+translsed → translated;  translsed → translated;  moltatud → multitude;
+moltatud → multitude;  Youngs → Young's;  Youngs → Young's;  Youngs →
+Young's;  Youngs → Young's;  transliaton → translation;  transliaton →
+translation;  forturs → fortress;  forturs → fortress;  enclusing →
+enclosing;  enclusing → enclosing;  int → in;  nationc → nation;  enemys
+→ enemy;  Canaanties → Canaanites;  poeriod → period;  poeriod → period;
+parttern → pattern;  parttern → pattern;  domion → dominion;  Deaper →
+Deeper;  Deaper → Deeper;  mianing → meaning;  mianing → meaning;
+Meaining → Meaning;  Meaining → Meaning;  witht → with;  liberbation →
+liberation;  liberbation → liberation;  assosited → assisted;  assosited
+→ assisted;  tabernatcles → tabernacles;  tabernatcles → tabernacles;
+assosiated → associated;  assosiisted → associated;  tabels → tables;
+tabels → tables;  imposistion → imposition;  imposistion → imposition;
+Jerumiah → Jeremiah;  Jerumiah's → Jeremiah's;  discution → discussion;
+discution → discussion;  destrcution → destruction;  destrcution →
+destruction;  int → in;  presnts → presents;  presnts → presents;
+Dueteronamy → Deuteronomy;  Dueteronamy → Deuteronomy;  suplant →
+supplant;  Canananites → Canaanites;  suplant → supplant;  Canananites →
+Canaanites;  discusion → discussion;  discusion → discussion;
+deliberetly → deliberately;  taberancle → tabernacle;  represnts →
+represents;  represnts → represents;  statments → statements;  statments
+→ statements;  appling → applying;  appling → applying;  tabernel →
+tabernacle;  tabernacla → tabernacle;  beging → begging;  beging →
+begging;  statment → statement;  statment → statement;  possessin →
+possession;  possessin → possession;  interveation → intervention;
+interveation → intervention;  reperesnt → represent;  reperesnt →
+represent;  Isaels → Israels;  suplante → supplant;  suplante →
+supplant;  globel → global;  immplciations → implications;
+immplciations → implications;  scholers → scholars;  scholers →
+scholars;  sanario → scenario;  sanario → scenario;  prophesys →
+prophesy's;  Daiel → Daniel;  exapnd → expand;  exapnd → expand;
+hasnting → hasting;  hasning → hsining;  hasning → hsining;  hasening →
+hastening;  hasening → hastening;  partriarcs → patriarch;  partriarcs →
+patriarch;  cosistent → consistent;  theam → theme;  theam → theme;
+inportant → inopportunity;  inportant → inopportunity;  familier →
+familiar;  familier → familiar;  Levitcus → Leviticus;  Levitcus →
+Leviticus;  Atoenemt → Atonement;  fi → relate;  bor → born;  delieved →
+believed;  delieved → believed;  Imediatly → Immediately;  delievered →
+delivered;  delievered → delivered;  imidiatly → immediately;  imidiatly
+→ immediately;  imidiatly → immediately;  imidiatly → immediately;
+imidatly → immediately;  imidatly → immediately;  preist → priest;
+preist → priest;  pristly → priestly;  departer → departure;  pristly →
+priestly;  comepany → company;  comepany → company;  evey → every;
+assosiated → associated;  taberancle → tabernacle;  esntial → essential;
+esntial → essential;  coveant → covenant;  coveant → covenant;  comunity
+→ community;  comunity → community;  sanctary → sanctuary;  sanctary →
+sanctuary;  posession → possession;  Solomon's → Solomon;  boths →
+booths;  compleats → completes;  compleats → completes;  selibration →
+celebration;  selibration → celebration;  taberancles → tabernacles;
+taberancles → tabernacles;  inheratance → inheritance;  inheratance →
+inheritance;  comunity → community;  convictat → convicted;  convictat →
+convicted;  angells → angels;  angells → angels;  delievered →
+delivered;  corispondes → corresponds;  corispondes → corresponds;  az →
+a;  toung → tongue;  toung → tongue;  Solomons → Solomon;  convictes →
+convicts;  convictes → convicts;  represnts → represents;  powor →
+power;  powor → power
+
+## Stylometric consistency
+
+Scored against the writer's style profile (built 2026-08-28 from 3290 documents, 35,703,092 words): distance 0.45, verdict **consistent** — more typical of this writer than roughly 90% of their own documents. The score is a similarity to the writer's established voice, not a probability of authorship.
 
 ## Statement
 

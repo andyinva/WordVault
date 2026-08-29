@@ -70,3 +70,68 @@ def test_heading_levels_map_to_word_styles(tmp_path):
     d = docx.Document(str(path))
     styles = [p.style.name for p in d.paragraphs if p.text]
     assert "Heading 1" in styles and "Heading 3" in styles
+
+
+def test_pipe_tables_become_real_word_tables(tmp_path):
+    """The provenance report's sessions table must arrive in Word as a
+    real table (header row bold, separator row dropped) — not a wall
+    of pipe characters."""
+    import docx as docx_lib
+
+    from wordvault.export_docx import markdown_to_docx
+
+    md = ("# Report\n\n"
+          "| Session | Began | Net |\n"
+          "|---|---|---|\n"
+          "| 1 | 2026-08-01 | +400 |\n"
+          "| 2 | 2026-08-03 | -20 |\n\n"
+          "Prose after the table.\n")
+    path = tmp_path / "table.docx"
+    markdown_to_docx(md, path, title="T", author="A")
+
+    d = docx_lib.Document(str(path))
+    assert len(d.tables) == 1
+    table = d.tables[0]
+    assert len(table.rows) == 3            # header + 2 data rows
+    assert table.cell(0, 0).text == "Session"
+    assert table.cell(2, 2).text == "-20"
+    assert "|" not in "\n".join(p.text for p in d.paragraphs)
+    assert any("Prose after the table." in p.text for p in d.paragraphs)
+
+
+def test_compact_mode_wears_andrews_dress(tmp_path):
+    """The provenance report's Word dress, learned from Andrew's
+    hand-tuned file: 0.4-inch margins, 8 pt everywhere (table cells
+    included), single spacing — and the corrections section starts a
+    fresh page."""
+    import docx as docx_lib
+    from docx.shared import Inches, Pt
+
+    from wordvault.export_docx import markdown_to_docx
+
+    md = ("# Provenance Report — Essay\n\n"
+          "The document facts.\n\n"
+          "| Session | Net |\n|---|---|\n| 1 | +400 |\n\n"
+          "## Corrections along the way\n\n"
+          "teh → the;  recieve → receive\n")
+    path = tmp_path / "compact.docx"
+    markdown_to_docx(md, path, title="T", author="A", compact=True,
+                     page_break_before=("Corrections along the way",))
+
+    d = docx_lib.Document(str(path))
+    section = d.sections[0]
+    assert section.top_margin == Inches(0.4)
+    assert section.left_margin == Inches(0.4)
+    sized = [r.font.size for p in d.paragraphs for r in p.runs
+             if r.text.strip()]
+    assert sized and all(s == Pt(8) for s in sized)
+    cell_runs = [r.font.size for t in d.tables for row in t.rows
+                 for c in row.cells for p in c.paragraphs
+                 for r in p.runs if r.text.strip()]
+    assert cell_runs and all(s == Pt(8) for s in cell_runs)
+    corrections = next(p for p in d.paragraphs
+                       if p.text == "Corrections along the way")
+    assert corrections.paragraph_format.page_break_before is True
+    # Other headings do NOT break.
+    first = next(p for p in d.paragraphs if p.text.startswith("Provenance"))
+    assert not first.paragraph_format.page_break_before

@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS editing_time (
     seconds INTEGER NOT NULL DEFAULT 0
 );
 
+-- Pasted-material log: every sizable paste into a document, with the
+-- writer's own explanation of what it was ("Isaiah 66 from Bible
+-- Search Lite") — provenance evidence the Provenance Report reads
+-- back.  Append-only, like everything the report relies on.
+CREATE TABLE IF NOT EXISTS paste_log (
+    id          INTEGER PRIMARY KEY,
+    doc_id      INTEGER NOT NULL REFERENCES documents(id),
+    created_utc TEXT NOT NULL,
+    words       INTEGER NOT NULL,
+    snippet     TEXT NOT NULL DEFAULT '',
+    comment     TEXT NOT NULL DEFAULT ''
+);
+
 -- Append-only history.  Rows are never updated or deleted.
 CREATE TABLE IF NOT EXISTS revisions (
     id            INTEGER PRIMARY KEY,

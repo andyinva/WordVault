@@ -198,3 +198,30 @@ def test_disabled_keys_round_trip_through_the_dialog(qapp):
     dialog._key_boxes["pgdn"].setChecked(False)
     dialog._key_boxes["insert"].setChecked(True)
     assert set(dialog.disabled_keys) == {"pgup", "insert"}
+
+
+# -- paste funnel (provenance comments) --------------------------------------
+
+def test_sizable_paste_announces_itself(pane, qapp):
+    from PyQt6.QtCore import QMimeData
+
+    heard = []
+    pane.text_pasted.connect(heard.append)
+    mime = QMimeData()
+    text = "word " * 15                    # well past the threshold
+    mime.setText(text)
+    pane.insertFromMimeData(mime)
+    assert heard == [text]
+    assert "word word" in pane.toPlainText()
+
+
+def test_tiny_paste_stays_quiet(pane, qapp):
+    from PyQt6.QtCore import QMimeData
+
+    heard = []
+    pane.text_pasted.connect(heard.append)
+    mime = QMimeData()
+    mime.setText("just three words")
+    pane.insertFromMimeData(mime)
+    assert heard == []
+    assert "just three words" in pane.toPlainText()
