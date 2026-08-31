@@ -819,6 +819,25 @@ class DocumentStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def recently_edited(self, limit: int = 10) -> list[int]:
+        """Document ids ordered by their newest TYPING revision,
+        newest first — the truly recently WORKED documents.
+
+        This deliberately counts only origin='typing' (the autosaves
+        of real writing): merely opening a document leaves no
+        revision at all, and bulk events — an import, a formatting
+        refresh — save revisions with their own origins, so a
+        3,000-document import day can never flood the Recent Work
+        desk off the map."""
+        rows = self._conn.execute(
+            "SELECT d.id, MAX(r.created_utc) AS last_edit "
+            "FROM documents d JOIN revisions r ON r.doc_id = d.id "
+            "WHERE d.trashed_utc IS NULL AND r.origin = 'typing' "
+            "GROUP BY d.id ORDER BY last_edit DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [r["id"] for r in rows]
+
     def log_paste(self, doc_id: int, words: int, snippet: str,
                   comment: str = "") -> None:
         """Record one paste into a document — how many words, a

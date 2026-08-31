@@ -275,6 +275,7 @@ class MainWindow(QMainWindow):
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
         self._restore_window_state()
+        self._refresh_recent_work()      # the desk fills at startup
 
         # Personal extensions (see wordvault/editor/extensions.py):
         # abilities the OWNER of this copy added, loaded from
@@ -673,6 +674,23 @@ class MainWindow(QMainWindow):
         self._outline_dock.setWidget(framed(self._outline, "OutlineFrame"))
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._outline_dock)
 
+        # Recent Work (Aug 2026 request): the desk with the current
+        # projects lying on it — the most recently worked documents,
+        # each with when, how big, how much grew this month, and how
+        # long at the keys — so nothing in progress slips the mind.
+        # One click opens the document.
+        self._recent_work = QListWidget(self)
+        self._recent_work.setWordWrap(True)
+        self._recent_work.itemClicked.connect(self._on_recent_work_clicked)
+        self._recent_work_dock = QDockWidget("Recent Work", self)
+        self._recent_work_dock.setObjectName("RecentWorkDock")
+        self._recent_work_dock.setWidget(
+            framed(self._recent_work, "RecentWorkFrame"))
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
+                           self._recent_work_dock)
+        self.splitDockWidget(self._outline_dock, self._recent_work_dock,
+                             Qt.Orientation.Vertical)
+
         self._info_panel = InfoPanel(self)
         self._info_panel.edit_tags_requested.connect(self._on_edit_tags)
         self._info_dock = QDockWidget("Document Info", self)
@@ -982,6 +1000,7 @@ class MainWindow(QMainWindow):
         # Library Info panels.
         view_menu.addAction(self._library_list_dock.toggleViewAction())
         view_menu.addAction(self._outline_dock.toggleViewAction())
+        view_menu.addAction(self._recent_work_dock.toggleViewAction())
         view_menu.addAction(self._info_dock.toggleViewAction())
         view_menu.addAction(self._library_dock.toggleViewAction())
 
@@ -1142,6 +1161,13 @@ class MainWindow(QMainWindow):
         )
         updates_action.triggered.connect(self._on_updates)
 
+        github_action = QAction("WordVault on &GitHub", self)
+        github_action.setToolTip(
+            "The project's home: source code, releases, and the place "
+            "to report a problem or ask for a feature"
+        )
+        github_action.triggered.connect(self._on_github)
+
         settings_action = QAction("&Settings…", self)
         settings_action.setToolTip(
             "Auto-save pause, font size, and library encryption"
@@ -1167,6 +1193,7 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(share_action)
         help_menu.addAction(updates_action)
+        help_menu.addAction(github_action)
         help_menu.addSeparator()
         help_menu.addAction(dictionary_action)
         help_menu.addAction(habits_action)
@@ -1207,6 +1234,16 @@ class MainWindow(QMainWindow):
         from wordvault.editor.help_dialog import ShareDialog
 
         ShareDialog(self).exec()
+
+    def _on_github(self) -> None:
+        """Help ▸ WordVault on GitHub: open the project's home in the
+        system browser — source, releases, issues."""
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+
+        from wordvault import REPO_URL
+
+        QDesktopServices.openUrl(QUrl(REPO_URL))
 
     def _on_updates(self) -> None:
         from wordvault.editor.help_dialog import _UPDATES_FILE, HelpDialog
@@ -1254,6 +1291,8 @@ class MainWindow(QMainWindow):
             paragraph_return=self._editor.paragraph_return(),
             disabled_keys=getattr(self, "_disabled_key_names", ()),
             line_light=self._editor.line_light(),
+            recent_panel_count=int(
+                self._settings.value("recent_panel_count", 10)),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1283,6 +1322,9 @@ class MainWindow(QMainWindow):
                                 ",".join(dialog.disabled_keys))
         self._editor.set_line_light(dialog.line_light)
         self._settings.setValue("line_light", dialog.line_light)
+        self._settings.setValue("recent_panel_count",
+                                dialog.recent_panel_count)
+        self._refresh_recent_work()   # the desk resizes at once
 
         # Encryption transitions (the dialog already validated the
         # matched passphrase pair when enabling).
@@ -2451,6 +2493,7 @@ class MainWindow(QMainWindow):
         self._live_departure = None
         self._current_doc = self._store.get_document(doc_id)
         self._record_recent(doc_id)   # feeds File ▸ Recent
+        self._refresh_recent_work()   # …and the Recent Work panel
         self._go_live()
         self._set_editor_enabled(True)
         self._load_note(doc_id)
@@ -3027,6 +3070,68 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             value = 25
         return max(5, min(100, value))
+
+    def _refresh_recent_work(self) -> None:
+        """Refill the Recent Work panel: for each recently EDITED
+        document — when it was last worked, its size, how much it grew
+        in the last 30 days, and the hours spent at the keys.  The
+        goal is memory: the works in progress stay in view.
+
+        Recently EDITED, not recently opened (Andrew's distinction):
+        File ▸ Recent remembers what was looked at; this desk holds
+        only what was actually worked on — the vault itself knows,
+        because editing is exactly what leaves a typing revision."""
+        if not hasattr(self, "_recent_work"):
+            return
+        from datetime import datetime, timedelta, timezone
+
+        from wordvault.provenance import word_count
+
+        def _aware(iso: str) -> datetime:
+            dt = datetime.fromisoformat(iso)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+        self._recent_work.clear()
+        limit = int(self._settings.value("recent_panel_count", 10))
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=30)
+        for doc_id in self._store.recently_edited(limit):
+            doc = self._store.get_document(doc_id)
+            if doc is None:
+                continue
+            revisions = self._store.list_revisions(doc_id)
+            if not revisions:
+                continue
+            words = word_count(self._store.get_text(revisions[-1].id))
+            # "Last worked" = the last TYPING revision — a formatting
+            # refresh or import afterwards is not the writer's hand.
+            last_typing = next(
+                (r for r in reversed(revisions) if r.origin == "typing"),
+                revisions[-1])
+            days = max(0, (now - _aware(last_typing.created_utc)).days)
+            # Words a month ago: the newest revision at least 30 days
+            # old (none = the whole document is younger than a month).
+            older = next((r for r in reversed(revisions)
+                          if _aware(r.created_utc) <= cutoff), None)
+            month = words - (word_count(self._store.get_text(older.id))
+                             if older else 0)
+            hours = self._store.editing_seconds(doc_id) / 3600.0
+            when = "today" if days == 0 else f"{days}d ago"
+            stats = f"{when} · {words:,}w · {month:+,}w/30d · {hours:.1f}h"
+            item = QListWidgetItem(f"{doc.title}\n    {stats}")
+            item.setData(Qt.ItemDataRole.UserRole, doc_id)
+            item.setToolTip(
+                f"Last worked {when} — {words:,} words in all, "
+                f"{month:+,} words in the last 30 days, {hours:.1f} "
+                "hours of hands-on writing. Click to open.")
+            self._recent_work.addItem(item)
+
+    def _on_recent_work_clicked(self, item: QListWidgetItem) -> None:
+        doc_id = item.data(Qt.ItemDataRole.UserRole)
+        if self._current_doc is not None and self._current_doc.id == doc_id:
+            return                        # already on the desk
+        self._autosave()                  # never lose the outgoing words
+        self._open_document(doc_id)
 
     def _record_recent(self, doc_id: int) -> None:
         """Move doc_id to the front of the persisted recents, trimmed

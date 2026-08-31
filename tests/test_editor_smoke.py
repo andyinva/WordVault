@@ -560,7 +560,8 @@ def test_dark_mode_applies_and_reverts(qapp, tmp_path):
     assert "#2e2a20" in window._editor.styleSheet()   # dark history amber
     # The framed side panels follow the theme (the Outline stayed
     # glaring white in the dark once — never again).
-    assert len(window._panel_frames) == 3
+    # Outline, Recent Work, Document Info, Library Info.
+    assert len(window._panel_frames) == 4
     for panel in window._panel_frames:
         assert "#232428" in panel.styleSheet()
 

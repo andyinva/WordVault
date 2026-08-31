@@ -56,6 +56,7 @@ class SettingsDialog(QDialog):
         paragraph_return: bool = True,
         disabled_keys: tuple = (),
         line_light: bool = True,
+        recent_panel_count: int = 10,
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -161,6 +162,17 @@ class SettingsDialog(QDialog):
             "for keyboards where a stray press keeps sending the view "
             "flying. They still work everywhere else.")
 
+        # The Recent Work panel (below the Outline): how many works in
+        # progress it keeps in view.
+        self._recent_panel_spin = QSpinBox(self)
+        self._recent_panel_spin.setRange(3, 25)
+        self._recent_panel_spin.setValue(recent_panel_count)
+        self._recent_panel_spin.setSuffix(" documents")
+        self._recent_panel_spin.setToolTip(
+            "The Recent Work panel lists this many recently worked "
+            "documents, with their age, size, month's growth, and "
+            "writing hours.")
+
         self._line_light_box = QCheckBox(
             "Highlight the line being edited", self)
         self._line_light_box.setChecked(line_light)
@@ -205,6 +217,7 @@ class SettingsDialog(QDialog):
         form.addRow(self._line_light_box)
         form.addRow(self._dark_box)
         form.addRow("Recent list remembers:", self._recent_spin)
+        form.addRow("Recent Work panel shows:", self._recent_panel_spin)
         form.addRow(self._reopen_box)
         form.addRow(self._enc_box)
         form.addRow(self._pw_label, self._pw_edit)
@@ -264,6 +277,10 @@ class SettingsDialog(QDialog):
         """Names of the keys to silence, e.g. ("pgup", "pgdn")."""
         return tuple(name for name, box in self._key_boxes.items()
                      if box.isChecked())
+
+    @property
+    def recent_panel_count(self) -> int:
+        return self._recent_panel_spin.value()
 
     @property
     def line_light(self) -> bool:

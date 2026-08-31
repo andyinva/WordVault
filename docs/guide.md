@@ -622,6 +622,32 @@ line being edited** (a gentle full-width wash under the cursor's line
 on by default, and it politely steps aside in history views), and
 **library encryption**.
 
+### The Recent Work panel — the desk
+
+Below the Outline sits **Recent Work**: the desk with your works in
+progress lying on it. Each recently opened document appears with its
+vital signs on a second line — how long since you last worked it, its
+total words, how many words it gained (or lost) in the last thirty
+days, and the hours of hands-on writing the editing clock has
+measured:
+
+    The Day of Gods Wrath
+        3d ago · 500w · +89w/30d · 0.8h
+
+One click opens the document (the outgoing one is saved first, as
+always). The panel exists for memory: an essay you haven't touched in
+two weeks announces itself every time you look left, so works in
+progress are never forgotten. The View menu shows and hides it, and
+Settings chooses how many documents the desk holds (ten unless you
+say otherwise).
+
+The desk holds what was **edited**, not what was merely opened — that
+is its difference from File ▸ Recent. Reading an old essay leaves no
+mark here; only typing does, because the vault itself knows the
+difference: editing is exactly what saves a revision. Bulk events —
+an import, a formatting refresh — never crowd the desk either, since
+their revisions are not the writer's hand.
+
 ### Paste comments — arrivals in your own words
 
 Whenever a sizable passage (ten words or more) is pasted into a
