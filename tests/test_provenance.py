@@ -128,3 +128,27 @@ def test_pasted_material_speaks_in_the_writers_words():
     # An uncommented paste is still shown, honestly, with its glimpse.
     assert "30 words pasted (“and the wall of the city…”, no note)" \
         in report
+
+
+def test_report_cites_the_chain_and_its_anchors():
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=0,
+        spelling_rows=[], chain_head="a" * 64,
+        anchors=[{"created_utc": _t(2, 10), "chain_head": "b" * 64,
+                  "status": "confirmed"}])
+    # FULL 64-character codes — a truncated fingerprint proves nothing.
+    assert f"`{'a' * 64}`" in report
+    assert "publicly anchored in the Bitcoin blockchain 1 time(s)" \
+        in report
+    assert f"`{'b' * 64}`" in report
+
+
+def test_pending_anchor_reads_as_pending():
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=0,
+        spelling_rows=[], chain_head="a" * 64,
+        anchors=[{"created_utc": _t(2, 10), "chain_head": "b" * 64,
+                  "status": "pending"}])
+    assert "confirmation pending" in report

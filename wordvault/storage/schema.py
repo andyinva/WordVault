@@ -70,7 +70,25 @@ CREATE TABLE IF NOT EXISTS revisions (
     kind          TEXT NOT NULL CHECK (kind IN ('snapshot', 'diff')),
     payload       TEXT NOT NULL,
     parent_rev_id INTEGER REFERENCES revisions(id),
-    origin        TEXT NOT NULL DEFAULT 'typing'
+    origin        TEXT NOT NULL DEFAULT 'typing',
+    -- The library hash chain (the private stamps): each revision's
+    -- SHA-256 over (its own content fingerprint + the previous
+    -- revision's chain_hash), one braid across the WHOLE library.
+    -- Alter any revision — or remove one — and every link after it
+    -- breaks visibly.  See DocumentStore.verify_chain.
+    chain_hash    TEXT
+);
+
+-- Public stamps (opt-in): each row records one anchoring of the chain
+-- head in the Bitcoin blockchain via OpenTimestamps.  The receipt
+-- file (.ots) lives beside the library; status goes pending ->
+-- confirmed once the calendar's batch lands in a block.
+CREATE TABLE IF NOT EXISTS anchors (
+    id           INTEGER PRIMARY KEY,
+    created_utc  TEXT NOT NULL,
+    chain_head   TEXT NOT NULL,
+    receipt_path TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX IF NOT EXISTS idx_revisions_doc ON revisions(doc_id);
 

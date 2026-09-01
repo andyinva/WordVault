@@ -115,6 +115,9 @@ def build_report(
     program_version: str = "",
     style_block: str | None = None,     # stylometric consistency, pre-worded
     pastes: list[tuple] = (),           # (created_utc, words, snippet, comment)
+    chain_head: str | None = None,      # the library hash chain's newest link
+    anchors: list[dict] = (),           # public stamps: created_utc/
+                                        # chain_head/status rows
 ) -> str:
     """The Provenance Report as Markdown, ready to save or print."""
     lines: list[str] = []
@@ -202,6 +205,32 @@ def build_report(
         "can be reopened, compared, and read in the WordVault "
         "timeline. The growth, sessions, arrivals, and corrections "
         "reported here are the document's own record of its making.")
+    if chain_head:
+        say("")
+        say("The library's hash chain seals this history: every "
+            "revision is cryptographically linked to all before it, "
+            "so none can be altered, inserted, or removed without "
+            "breaking the chain. At report time its head was:")
+        say("")
+        # The FULL 64 characters, on their own line: this is the code
+        # a reader compares byte for byte — a truncated fingerprint
+        # proves nothing (Andrew's "partial code" catch).
+        say(f"`{chain_head}`")
+    if anchors:
+        # The past codes that MATTER are the ones made public: each
+        # anchored head is frozen in Bitcoin, and everything sealed
+        # beneath it inherits that public date.
+        confirmed = [a for a in anchors if a.get("status") == "confirmed"]
+        say("")
+        say(f"The chain has been publicly anchored in the Bitcoin "
+            f"blockchain {len(anchors)} time(s) via OpenTimestamps"
+            + (f", most recently confirmed on "
+               f"{_local(confirmed[-1]['created_utc'], '%Y-%m-%d')} "
+               "with head:" if confirmed else
+               " (confirmation pending)."))
+        if confirmed:
+            say("")
+            say(f"`{confirmed[-1]['chain_head']}`")
     if spelling_rows:
         say("")
         say("*The spelling corrections made while writing are "

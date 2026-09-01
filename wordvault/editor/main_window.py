@@ -272,6 +272,27 @@ class MainWindow(QMainWindow):
         if self._settings.value("dark_mode", False, type=bool):
             self._apply_theme(True)
 
+        # The hash chain (the private stamps): a library from before
+        # the chain — or one interrupted mid-braid — is completed
+        # here, once, behind a progress bar.  A few seconds for even
+        # a large library; every startup after that finds nothing to
+        # do and skips in a millisecond.
+        if self._store.chain_needs_backfill():
+            from PyQt6.QtWidgets import QProgressDialog
+
+            progress = QProgressDialog(
+                "Braiding the library's hash chain (one-time)…",
+                None, 0, 100, self)
+            progress.setWindowTitle("WordVault")
+            progress.setMinimumDuration(500)
+
+            def report(done, total):
+                progress.setMaximum(total)
+                progress.setValue(done)
+
+            self._store.backfill_chain(report)
+            progress.close()
+
         self._reload_document_list()
         self._set_editor_enabled(False)  # nothing open yet
         self._restore_window_state()
@@ -424,9 +445,27 @@ class MainWindow(QMainWindow):
         self._notes.installEventFilter(self)
         self._notes.viewport().installEventFilter(self)
 
+        # Captions on the two editors (Aug 2026 request): the four side
+        # panels wear dock title bars, so the editors wear MATCHING
+        # caption bars — all six windows read as one family.  These
+        # are labels, not real dock chrome: a closable, floatable main
+        # editor would be a trap, so the editors get the look without
+        # the dock behaviors.  Plain unstyled labels follow the
+        # palette, so dark mode dresses them for free.
+        def captioned(widget, text: str) -> QWidget:
+            label = QLabel(text, self)
+            label.setContentsMargins(6, 3, 6, 2)
+            host = QWidget(self)
+            box = QVBoxLayout(host)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(0)
+            box.addWidget(label)
+            box.addWidget(widget, stretch=1)
+            return host
+
         self._split = QSplitter(Qt.Orientation.Vertical, self)
-        self._split.addWidget(self._editor)
-        self._split.addWidget(self._notes)
+        self._split.addWidget(captioned(self._editor, "WV Editor"))
+        self._split.addWidget(captioned(self._notes, "WV Notes Editor"))
         self._split.setStretchFactor(0, 2)   # document: 2/3
         self._split.setStretchFactor(1, 1)   # notes: 1/3
         self._split.setChildrenCollapsible(True)
@@ -1052,6 +1091,22 @@ class MainWindow(QMainWindow):
             "is marked automatically.")
         dna_review_action.triggered.connect(self._on_review_foreign)
         library_menu.addAction(dna_review_action)
+
+        # --- provenance stamps: the private chain, the public anchor.
+        chain_action = QAction("Verify Library Hash &Chain…", self)
+        chain_action.setToolTip(
+            "Recompute every link of the library's hash chain — proof "
+            "that no revision has been altered, inserted, or removed")
+        chain_action.triggered.connect(self._on_verify_chain)
+        library_menu.addAction(chain_action)
+
+        anchor_action = QAction("Anchor Library in &Bitcoin…", self)
+        anchor_action.setToolTip(
+            "OPT-IN public stamp: send only the chain head's 32-byte "
+            "fingerprint to the Bitcoin blockchain via OpenTimestamps "
+            "— free, and no writing ever leaves this computer")
+        anchor_action.triggered.connect(self._on_anchor)
+        library_menu.addAction(anchor_action)
 
         review_action = QAction("&Review Version Groups…", self)
         review_action.setShortcut("Ctrl+G")
@@ -2054,6 +2109,8 @@ class MainWindow(QMainWindow):
                 style_block=self._style_block_for(self._current_doc.id),
                 pastes=self._store.pastes_for_document(
                     self._current_doc.id),
+                chain_head=self._store.chain_head(),
+                anchors=self._store.list_anchors(),
             )
         finally:
             _QApp.restoreOverrideCursor()
@@ -2134,6 +2191,143 @@ class MainWindow(QMainWindow):
         buttons.addWidget(close_btn)
         layout.addLayout(buttons)
         dialog.exec()
+
+    # ------------------------------------ provenance stamps (chain/anchor) --
+
+    def _on_verify_chain(self) -> None:
+        """Library ▸ Verify Library Hash Chain: recompute every link
+        of the braid.  Intact = no revision anywhere has been altered,
+        inserted, or removed since it was written."""
+        from PyQt6.QtWidgets import QProgressDialog
+
+        if self._store.chain_needs_backfill():
+            self._store.backfill_chain()
+        progress = QProgressDialog("Verifying the hash chain…", None,
+                                   0, 100, self)
+        progress.setWindowTitle("Verify Hash Chain")
+        progress.setMinimumDuration(400)
+
+        def report(done, total):
+            progress.setMaximum(total)
+            progress.setValue(done)
+
+        ok, bad_rev, checked = self._store.verify_chain(report)
+        progress.close()
+        if ok:
+            head = self._store.chain_head() or ""
+            QMessageBox.information(
+                self, "Verify Hash Chain",
+                f"The chain is intact: all {checked:,} revisions in "
+                "the library verify, every link sound.\n\n"
+                f"Chain head (the full code):\n{head}\n\n"
+                "Nothing has been altered, inserted, or removed since "
+                "it was written.")
+        else:
+            QMessageBox.warning(
+                self, "Verify Hash Chain",
+                f"The chain BREAKS at revision {bad_rev} (link "
+                f"{checked:,}). A revision at or before that point "
+                "was altered, inserted, or removed outside WordVault. "
+                "Everything before the break still verifies; "
+                "everything after it inherits the doubt.")
+
+    def _on_anchor(self) -> None:
+        """Library ▸ Anchor in Bitcoin: the OPT-IN public stamp.
+
+        Only the chain head — 32 bytes, revealing nothing — goes out,
+        via OpenTimestamps (free; batched into a Bitcoin transaction
+        by public calendar servers).  The .ots receipt comes back to
+        ~/.wordvault/anchors and pairs with the library as proof.
+        Receipts are born 'pending'; each run first tries to upgrade
+        pending ones (the calendar lands in a block within hours)."""
+        import shutil
+        import subprocess
+
+        answer = QMessageBox.question(
+            self, "Anchor Library in Bitcoin",
+            "This makes the vault's history PUBLICLY provable:\n\n"
+            "• Only a 32-byte fingerprint of the hash chain's head is "
+            "sent — none of your writing, not even a title.\n"
+            "• It is embedded in the Bitcoin blockchain via the free "
+            "OpenTimestamps service (no account, no bitcoin needed).\n"
+            "• From then on, anyone can verify that your library — "
+            "every revision beneath that head — existed by that "
+            "date.\n\nSend the fingerprint now?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        ots = shutil.which("ots")
+        if ots is None:
+            QMessageBox.information(
+                self, "Anchor Library in Bitcoin",
+                "Anchoring uses the OpenTimestamps client. Install it "
+                "with:\n\n    pip install opentimestamps-client\n\n"
+                "then try again. (The hash chain itself needs nothing "
+                "and is already protecting the library.)")
+            return
+
+        if self._store.chain_needs_backfill():
+            self._store.backfill_chain()
+        head = self._store.chain_head()
+        if not head:
+            QMessageBox.information(self, "Anchor Library in Bitcoin",
+                                    "The library has no revisions yet.")
+            return
+
+        # First, try to complete any pending receipts from past runs.
+        upgraded = 0
+        for anchor in self._store.list_anchors():
+            if anchor["status"] != "pending":
+                continue
+            try:
+                result = subprocess.run(
+                    [ots, "upgrade", anchor["receipt_path"]],
+                    capture_output=True, text=True, timeout=30)
+                if result.returncode == 0:
+                    self._store.set_anchor_status(anchor["id"],
+                                                  "confirmed")
+                    upgraded += 1
+            except Exception:             # noqa: BLE001 — offline: later
+                pass
+
+        # Then stamp the current head.
+        from datetime import datetime
+
+        anchors_dir = Path.home() / ".wordvault" / "anchors"
+        anchors_dir.mkdir(parents=True, exist_ok=True)
+        stamp_name = datetime.now().strftime("anchor-%Y%m%d-%H%M%S.txt")
+        stamp_file = anchors_dir / stamp_name
+        stamp_file.write_text(
+            f"WordVault library chain head\n{head}\n"
+            f"anchored {datetime.now().astimezone().isoformat()}\n",
+            encoding="utf-8")
+        try:
+            result = subprocess.run([ots, "stamp", str(stamp_file)],
+                                    capture_output=True, text=True,
+                                    timeout=60)
+        except Exception as error:        # noqa: BLE001 — network life
+            QMessageBox.warning(self, "Anchor Library in Bitcoin",
+                                f"The calendar servers could not be "
+                                f"reached: {error}")
+            return
+        receipt = stamp_file.with_suffix(".txt.ots")
+        if result.returncode != 0 or not receipt.exists():
+            QMessageBox.warning(
+                self, "Anchor Library in Bitcoin",
+                "Stamping failed:\n" + (result.stderr or "no receipt "
+                                        "was produced"))
+            return
+        self._store.add_anchor(head, str(receipt))
+        extra = (f"\n\n({upgraded} earlier anchor(s) confirmed in the "
+                 "blockchain meanwhile.)" if upgraded else "")
+        QMessageBox.information(
+            self, "Anchor Library in Bitcoin",
+            f"This fingerprint is on its way into Bitcoin:\n{head}\n\n"
+            f"The receipt is saved at:\n{receipt}\n\n"
+            "It starts as PENDING; within a few hours the calendar's "
+            "batch lands in a block. Run Anchor again any later day "
+            "to confirm it — and keep the receipt with your backups: "
+            "receipt + library = proof." + extra)
 
     # ------------------------------------------ writing DNA (stylometry) --
 

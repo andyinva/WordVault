@@ -678,6 +678,71 @@ essay, or hand it to anyone who asks "did you really write this?" —
 every revision it cites remains in the vault, reopenable on the
 timeline.
 
+### The stamps — private chain, public anchor
+
+The vault's promise — nothing is ever destroyed — is now *provable*,
+by two kinds of stamp that work together.
+
+The **private stamps** run themselves. Every revision carries a
+cryptographic link (a SHA-256 hash) binding it to every revision
+before it, one braid across the whole library. Alter any old
+revision, slip one in, or remove one, and every link after it breaks
+visibly. **Library ▸ Verify Library Hash Chain** recomputes the whole
+braid in seconds and tells you plainly: intact, or broken at exactly
+which revision. The chain costs 64 bytes per revision, works
+entirely offline, and asks nothing of you — an old library is braided
+once, automatically, at startup. Its honest limit: it is your own
+testimony, kept on your own machine.
+
+The **public anchor** (opt-in, Library ▸ Anchor Library in Bitcoin)
+removes that limit when you want it removed. Only the chain head — a
+32-byte fingerprint revealing nothing, not even a title — is sent to
+the free OpenTimestamps service, which batches it into a Bitcoin
+transaction. A small receipt file returns to `~/.wordvault/anchors`.
+From then on, anyone can verify that your library, every revision
+beneath that head, existed by that block's date — no trust in you
+required, because the witness is a public ledger nobody controls.
+One anchored head retroactively seals everything beneath it, so
+anchoring after each backup (or once a week) is plenty. Receipts are
+born *pending* and confirm within hours once the batch lands in a
+block; running Anchor again on a later day completes them. Anchoring
+requires the `opentimestamps-client` package and an internet
+connection; the private chain needs neither.
+
+*Who provides the public stamp?* **OpenTimestamps**
+(opentimestamps.org) — not a company but an open, free standard
+created in 2016 by Peter Todd, a longtime Bitcoin developer. When
+WordVault stamps your fingerprint, the OpenTimestamps client submits
+it to the project's public **calendar servers** (named Alice, Bob,
+Finney, and Catallaxy — run by volunteers and firms in the Bitcoin
+community, donation-supported, no account required). Each calendar
+gathers fingerprints from everyone worldwide into a Merkle tree and
+commits the tree's single root in one Bitcoin transaction — which is
+how millions of stamps ride to the blockchain for the price of one,
+and why yours costs nothing.
+
+The part that makes this trustworthy rather than merely convenient:
+**the calendars are couriers, not notaries.** Your finished `.ots`
+receipt is a self-contained mathematical path from your fingerprint
+up into an actual Bitcoin block, checkable by anyone against the
+public blockchain with no calendar involved at all. A dishonest or
+defunct calendar cannot forge a stamp — the worst it can do is fail
+to deliver one, and the client guards against that by submitting to
+several calendars at once. The witness behind every stamp is the
+Bitcoin blockchain itself; OpenTimestamps is only the free postal
+system that carries your 32 bytes there, and the receipt is written
+so the postman never needs to be trusted afterward.
+
+Together they are a hybrid: thousands of private stamps guarding
+every revision all day, and an occasional public stamp that lets the
+whole braid be checked by the world. The Provenance Report cites the
+chain head and the anchor history, so running the report is all an
+interested reader ever needs: the current stamp, and the record of
+when past stamps were made public, on one printed page — no database
+browsing required. (And the current head is all a reader needs,
+because each link contains every link before it: today's code
+cryptographically contains all past codes.)
+
 ### Writing DNA — your style, measured
 
 Every writer leaves habits they do not consciously control, and the

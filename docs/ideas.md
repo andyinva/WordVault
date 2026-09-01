@@ -69,9 +69,12 @@ design (see the User Guide, Part I).
 - [ ] **Events log** — a small table recording open/close, print,
   export, import, restore, and paste sizes, so future reports grow
   richer from the day it ships.
-- [ ] **Hash chain** — each revision fingerprints the one before it,
+- [x] **Hash chain** — each revision fingerprints the one before it,
   making the history tamper-evident: the notarized diary, the
-  strongest claim a writer can print.
+  strongest claim a writer can print. *(Shipped: one braid across the
+  whole library, backfilled at startup, Library ▸ Verify — PLUS the
+  opt-in public seal: Library ▸ Anchor in Bitcoin via OpenTimestamps,
+  32 bytes out, receipt back, nothing private ever leaves.)*
 
 ## Bigger, but worthy of the list
 

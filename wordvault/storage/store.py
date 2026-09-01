@@ -29,6 +29,27 @@ from wordvault.storage import schema
 from wordvault.storage.diffs import apply_delta, make_delta
 
 
+def _revision_fingerprint(doc_id: int, created_utc: str, origin: str,
+                          text: str) -> str:
+    """One revision's identity as 64 hex characters: WHAT was written
+    (the full text's SHA-256), by which document, when, and how it
+    arrived.  Change any of those and the fingerprint changes."""
+    import hashlib
+
+    body = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    record = f"{doc_id}|{created_utc}|{origin}|{body}"
+    return hashlib.sha256(record.encode("utf-8")).hexdigest()
+
+
+def _chain_link(previous_hash: str, fingerprint: str) -> str:
+    """The braid: this link depends on ALL links before it, so one
+    altered (or removed) revision breaks every link after it."""
+    import hashlib
+
+    return hashlib.sha256(
+        (previous_hash + fingerprint).encode("utf-8")).hexdigest()
+
+
 def _utc_now() -> str:
     """Current time as an ISO-8601 UTC string — the only timestamp format
     stored anywhere in the database (display conversion is the UI's job)."""
@@ -108,6 +129,16 @@ class DocumentStore:
         if "trashed_utc" not in columns:
             self._conn.execute(
                 "ALTER TABLE documents ADD COLUMN trashed_utc TEXT")
+            self._conn.commit()
+
+        # Migration for libraries born before the hash chain: the
+        # column arrives empty and backfill_chain (run by the window
+        # at startup, with a progress bar) braids the whole history.
+        rev_columns = {r[1] for r in
+                       self._conn.execute("PRAGMA table_info(revisions)")}
+        if "chain_hash" not in rev_columns:
+            self._conn.execute(
+                "ALTER TABLE revisions ADD COLUMN chain_hash TEXT")
             self._conn.commit()
 
     # -- lifecycle ----------------------------------------------------------
@@ -309,11 +340,30 @@ class DocumentStore:
                 kind, payload = "diff", make_delta(current_text, text)
             parent_id = latest.id
 
+        # The private stamp: link this revision into the library-wide
+        # hash chain.  If the chain is not yet complete (a library
+        # awaiting its startup backfill), the link is left NULL and
+        # the backfill braids it in — a chain must never have a forged
+        # middle.
+        created = created_utc or _utc_now()
+        last = self._conn.execute(
+            "SELECT chain_hash FROM revisions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last is not None and last["chain_hash"] is None:
+            chain_hash = None              # backfill will complete us
+        else:
+            previous = last["chain_hash"] if last is not None else ""
+            chain_hash = _chain_link(
+                previous, _revision_fingerprint(doc_id, created, origin,
+                                                text))
+
         cur = self._conn.execute(
             "INSERT INTO revisions "
-            "(doc_id, created_utc, kind, payload, parent_rev_id, origin) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (doc_id, created_utc or _utc_now(), kind, payload, parent_id, origin),
+            "(doc_id, created_utc, kind, payload, parent_rev_id, origin, "
+            " chain_hash) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (doc_id, created, kind, payload, parent_id, origin,
+             chain_hash),
         )
         # Derived indexes mirror current text; this save changed it.
         self._refresh_fts(doc_id, current_text=text)
@@ -837,6 +887,105 @@ class DocumentStore:
             (limit,),
         ).fetchall()
         return [r["id"] for r in rows]
+
+    # ------------------------------------------ the library hash chain --
+
+    def chain_needs_backfill(self) -> bool:
+        """True while any revision still lacks its chain link (a
+        library from before the chain, or saves made mid-migration)."""
+        row = self._conn.execute(
+            "SELECT 1 FROM revisions WHERE chain_hash IS NULL LIMIT 1"
+        ).fetchone()
+        return row is not None
+
+    def backfill_chain(self, progress=None) -> int:
+        """Braid every unlinked revision into the chain, oldest first.
+        `progress(done, total)` is called along the way (the window
+        shows a bar); returns how many links were written.  Idempotent
+        and safe to interrupt — completed links are never rewritten."""
+        rows = self._conn.execute(
+            "SELECT id, doc_id, created_utc, origin, chain_hash "
+            "FROM revisions ORDER BY id"
+        ).fetchall()
+        previous = ""
+        filled = 0
+        for i, row in enumerate(rows):
+            if row["chain_hash"] is not None:
+                previous = row["chain_hash"]
+            else:
+                link = _chain_link(
+                    previous,
+                    _revision_fingerprint(row["doc_id"],
+                                          row["created_utc"],
+                                          row["origin"],
+                                          self.get_text(row["id"])))
+                self._conn.execute(
+                    "UPDATE revisions SET chain_hash = ? WHERE id = ?",
+                    (link, row["id"]))
+                previous = link
+                filled += 1
+            if progress is not None:
+                progress(i + 1, len(rows))
+        self._conn.commit()
+        return filled
+
+    def verify_chain(self, progress=None):
+        """Walk the whole braid and recompute every link.
+
+        Returns (ok, bad_revision_id, checked): ok=True with all
+        links sound; on the first broken link, ok=False and the
+        revision id where the chain no longer matches its contents —
+        an alteration, an insertion, or a removal at or before that
+        point."""
+        rows = self._conn.execute(
+            "SELECT id, doc_id, created_utc, origin, chain_hash "
+            "FROM revisions ORDER BY id"
+        ).fetchall()
+        previous = ""
+        for i, row in enumerate(rows):
+            expected = _chain_link(
+                previous,
+                _revision_fingerprint(row["doc_id"], row["created_utc"],
+                                      row["origin"],
+                                      self.get_text(row["id"])))
+            if row["chain_hash"] != expected:
+                return False, row["id"], i + 1
+            previous = expected
+            if progress is not None:
+                progress(i + 1, len(rows))
+        return True, None, len(rows)
+
+    def chain_head(self) -> Optional[str]:
+        """The braid's newest link — the 64 hex characters that seal
+        every revision beneath them.  This is what a public anchor
+        stamps."""
+        row = self._conn.execute(
+            "SELECT chain_hash FROM revisions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return row["chain_hash"] if row is not None else None
+
+    # ----------------------------------------- public anchors (opt-in) --
+
+    def add_anchor(self, chain_head: str, receipt_path: str) -> int:
+        """Record one public stamping of the chain head (status starts
+        'pending' until the calendar's batch lands in a block)."""
+        cur = self._conn.execute(
+            "INSERT INTO anchors (created_utc, chain_head, receipt_path) "
+            "VALUES (?, ?, ?)",
+            (_utc_now(), chain_head, receipt_path))
+        self._conn.commit()
+        return cur.lastrowid
+
+    def list_anchors(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT id, created_utc, chain_head, receipt_path, status "
+            "FROM anchors ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def set_anchor_status(self, anchor_id: int, status: str) -> None:
+        self._conn.execute("UPDATE anchors SET status = ? WHERE id = ?",
+                           (status, anchor_id))
+        self._conn.commit()
 
     def log_paste(self, doc_id: int, words: int, snippet: str,
                   comment: str = "") -> None:
