@@ -2111,6 +2111,8 @@ class MainWindow(QMainWindow):
                     self._current_doc.id),
                 chain_head=self._store.chain_head(),
                 anchors=self._store.list_anchors(),
+                assists=self._store.assists_for_document(
+                    self._current_doc.id),
             )
         finally:
             _QApp.restoreOverrideCursor()

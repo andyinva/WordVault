@@ -648,6 +648,17 @@ difference: editing is exactly what saves a revision. Bulk events —
 an import, a formatting refresh — never crowd the desk either, since
 their revisions are not the writer's hand.
 
+### Outside assistance — disclosed, never hidden
+
+The vault keeps an **assist log**: any tool that changes a document's
+text on the writer's behalf (a personal extension, for instance) can
+record what it did — when, how many words it reviewed, how many it
+changed, and a note. The Provenance Report prints every row in an
+"Outside assistance" section on page one, before the Statement. The
+principle is the report's whole spirit: its credibility comes from
+telling everything, so help from beyond the writer's own hand goes on
+the record rather than out of sight.
+
 ### Paste comments — arrivals in your own words
 
 Whenever a sizable passage (ten words or more) is pasted into a

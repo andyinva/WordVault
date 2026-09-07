@@ -86,3 +86,19 @@ def test_anchor_bookkeeping_round_trips(tmp_path):
     assert anchors[0]["status"] == "pending"
     store.set_anchor_status(anchor_id, "confirmed")
     assert store.list_anchors()[0]["status"] == "confirmed"
+
+
+def test_assist_log_round_trips(tmp_path):
+    from wordvault import DocumentStore
+
+    store = DocumentStore(tmp_path / "assist.db")
+    doc = store.create_document("Essay")
+    store.log_assist(doc.id, "Claude document correction", 7131, 47,
+                     "6 of 34 paragraphs corrected")
+    rows = store.assists_for_document(doc.id)
+    assert len(rows) == 1
+    _created, tool, reviewed, changed, note = rows[0]
+    assert tool.startswith("Claude") and reviewed == 7131
+    assert changed == 47 and "34 paragraphs" in note
+    other = store.create_document("Other")
+    assert store.assists_for_document(other.id) == []

@@ -118,6 +118,8 @@ def build_report(
     chain_head: str | None = None,      # the library hash chain's newest link
     anchors: list[dict] = (),           # public stamps: created_utc/
                                         # chain_head/status rows
+    assists: list[tuple] = (),          # (created_utc, tool, reviewed,
+                                        #  changed, note) — disclosed help
 ) -> str:
     """The Provenance Report as Markdown, ready to save or print."""
     lines: list[str] = []
@@ -187,6 +189,20 @@ def build_report(
                     else f" (“{snippet[:40]}…”, no note)")
             say(f"- {_local(created)}: {words} words pasted{note}")
     say("")
+
+    # --- outside assistance, disclosed -----------------------------------
+    # Help from beyond the writer's own hand is REPORTED, not hidden:
+    # the report's credibility comes from telling everything.
+    if assists:
+        say("## Outside assistance")
+        say("")
+        say("Help beyond the writer's own hand, on the record:")
+        say("")
+        for created, tool, reviewed, changed, note in assists:
+            detail = f" — {note}" if note else ""
+            say(f"- {_local(created)}: {tool}: {reviewed:,} words "
+                f"reviewed, {changed:,} changed{detail}")
+        say("")
 
     # --- stylometric consistency (optional; worded by the caller) --------
     if style_block:

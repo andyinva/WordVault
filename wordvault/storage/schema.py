@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS revisions (
     chain_hash    TEXT
 );
 
+-- Outside-assistance ledger: any tool that changes a document's text
+-- on the writer's behalf (a personal correction extension, a future
+-- helper) records what it did here, and the Provenance Report
+-- DISCLOSES it — help is never hidden, it is on the record.
+CREATE TABLE IF NOT EXISTS assist_log (
+    id             INTEGER PRIMARY KEY,
+    doc_id         INTEGER NOT NULL REFERENCES documents(id),
+    created_utc    TEXT NOT NULL,
+    tool           TEXT NOT NULL,
+    words_reviewed INTEGER NOT NULL DEFAULT 0,
+    words_changed  INTEGER NOT NULL DEFAULT 0,
+    note           TEXT NOT NULL DEFAULT ''
+);
+
 -- Public stamps (opt-in): each row records one anchoring of the chain
 -- head in the Bitcoin blockchain via OpenTimestamps.  The receipt
 -- file (.ots) lives beside the library; status goes pending ->

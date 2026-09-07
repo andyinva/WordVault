@@ -152,3 +152,19 @@ def test_pending_anchor_reads_as_pending():
         anchors=[{"created_utc": _t(2, 10), "chain_head": "b" * 64,
                   "status": "pending"}])
     assert "confirmation pending" in report
+
+
+def test_outside_assistance_is_disclosed():
+    report = build_report(
+        title="Essay", created_utc=_t(1, 8),
+        revisions=[(_t(1, 9), 500)], editing_seconds=0,
+        spelling_rows=[],
+        assists=[(_t(2, 10), "Claude document correction "
+                  "(claude-sonnet-5)", 7131, 47,
+                  "6 of 34 paragraphs corrected")])
+    assert "## Outside assistance" in report
+    assert "on the record" in report
+    assert "7,131 words reviewed, 47 changed" in report
+    assert "6 of 34 paragraphs corrected" in report
+    # Disclosure sits on page one, before the Statement.
+    assert report.index("Outside assistance") < report.index("## Statement")

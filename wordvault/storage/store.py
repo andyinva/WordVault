@@ -987,6 +987,29 @@ class DocumentStore:
                            (status, anchor_id))
         self._conn.commit()
 
+    def log_assist(self, doc_id: int, tool: str, words_reviewed: int,
+                   words_changed: int, note: str = "") -> None:
+        """Record one act of outside assistance on a document — a
+        correction pass by a tool, for instance.  The Provenance
+        Report discloses every row: help is never hidden."""
+        self._conn.execute(
+            "INSERT INTO assist_log "
+            "(doc_id, created_utc, tool, words_reviewed, words_changed, "
+            " note) VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_id, _utc_now(), tool, words_reviewed, words_changed,
+             note))
+        self._conn.commit()
+
+    def assists_for_document(self, doc_id: int) -> list[tuple]:
+        """(created_utc, tool, words_reviewed, words_changed, note),
+        oldest first — the disclosure evidence."""
+        rows = self._conn.execute(
+            "SELECT created_utc, tool, words_reviewed, words_changed, "
+            "note FROM assist_log WHERE doc_id = ? ORDER BY id",
+            (doc_id,)).fetchall()
+        return [(r["created_utc"], r["tool"], r["words_reviewed"],
+                 r["words_changed"], r["note"]) for r in rows]
+
     def log_paste(self, doc_id: int, words: int, snippet: str,
                   comment: str = "") -> None:
         """Record one paste into a document — how many words, a
