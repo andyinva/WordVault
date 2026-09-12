@@ -21,3 +21,7 @@ WordVaultDesign.docx
 .idea/
 Thumbs.db
 .DS_Store
+
+# Virtual environments (one per machine, never shared)
+venv/
+.venv/
