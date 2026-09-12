@@ -39,6 +39,20 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv)
     app.setApplicationName("WordVault")
 
+    # WordVault manages light and dark itself (the Dark mode box in
+    # Settings), so the desktop's own dark/light preference must not leak
+    # in.  On Ubuntu, GNOME's "dark style" otherwise turns the platform
+    # palette dark before MainWindow photographs it as the "light" look,
+    # and the Settings box then cannot get back to a light window.
+    # Asking Qt for the light scheme up front makes the base look light
+    # on both Windows and Ubuntu.  (setColorScheme arrived in Qt 6.8;
+    # older builds simply skip this and behave as before.)
+    from PyQt6.QtCore import Qt
+
+    hints = app.styleHints()
+    if hasattr(hints, "setColorScheme"):
+        hints.setColorScheme(Qt.ColorScheme.Light)
+
     # Stage 9: an encrypted library asks for its passphrase up front.
     # Wrong entries just re-prompt; Cancel exits quietly.
     passphrase = None

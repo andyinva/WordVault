@@ -45,6 +45,13 @@ crypto = ["cryptography>=41"]
 encrypted-db = ["sqlcipher3-binary; sys_platform == 'linux'"]
 # Spell checking (View > Check Spelling):
 spelling = ["pyspellchecker>=0.8"]
+# Everything a working install needs, in one word.  Setting up a fresh
+# machine (Ubuntu or Windows) is then:
+#     python -m venv venv
+#     source venv/bin/activate        (Windows: venv\Scripts\activate)
+#     pip install -e ".[full]"
+# Add ",dev" to that list to get pytest as well.
+full = ["wordvault[gui,ingest,crypto,spelling]"]
 
 [tool.setuptools.packages.find]
 include = ["wordvault*"]
