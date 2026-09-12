@@ -9,7 +9,27 @@ different places; replacing the program leaves the library exactly as
 it was. (A backup is still wisdom, not worry: Library ▸ Back Up
 Library… before an update takes one minute.)
 
-There are two ways to update, depending on how WordVault arrived.
+## The one-click way: Help ▸ Check for Updates…
+
+WordVault can update itself. **Help ▸ Check for Updates…** asks
+GitHub whether a newer version exists. If there is one, it tells you
+the version and date and offers to install it; say yes, and a moment
+later it offers to restart with the new version in place. The library
+is not part of this; only the program's own files change.
+
+WordVault also looks quietly once a day when it starts. If something
+new is waiting, a line appears in the status bar at the bottom; there
+is never a pop-up. **Help ▸ About WordVault…** shows exactly which
+version you are running.
+
+The automatic update works for a copy from GitHub Desktop or git
+(it pulls) and for a downloaded ZIP folder (it fetches the new files
+and replaces the old ones). If you have edited the program's code
+yourself, it stops and says so rather than mixing your changes with
+the update; commit or discard them and try again.
+
+The manual ways below still work and are the fallback if your
+computer cannot reach GitHub from inside WordVault.
 
 ## If you use GitHub Desktop (or git)
 

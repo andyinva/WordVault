@@ -13,7 +13,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wordvault"
-version = "1.0"
+# The version lives in ONE place, wordvault/__init__.py (__version__);
+# setuptools reads it from there so the two can never disagree.
+dynamic = ["version"]
 description = "A version-tracking plain-text writing environment backed by SQLite — a professional writer's open-source friend."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -55,6 +57,9 @@ full = ["wordvault[gui,ingest,crypto,spelling]"]
 
 [tool.setuptools.packages.find]
 include = ["wordvault*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "wordvault.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -309,6 +309,15 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Personal extensions loaded: " + ", ".join(names), 5000)
 
+        # The quiet update check: once a day, a few seconds after the
+        # window is up (so startup never waits on the network), and the
+        # only result the writer ever sees is a line in the status bar.
+        # The Help menu has the loud version (Check for Updates).
+        from PyQt6.QtCore import QTimer
+
+        self._update_workers = []   # keeps background threads alive
+        QTimer.singleShot(4000, self._quiet_update_check)
+
     # ---------------------------------- window-state persistence -----------
 
     def _restore_window_state(self) -> None:
@@ -1210,11 +1219,24 @@ class MainWindow(QMainWindow):
         )
         share_action.triggered.connect(self._on_share)
 
+        check_action = QAction("Check for &Updates…", self)
+        check_action.setToolTip(
+            "Ask GitHub whether a newer WordVault exists and install it "
+            "in one step. Your library is never touched."
+        )
+        check_action.triggered.connect(self._on_check_updates)
+
         updates_action = QAction("&Getting Updates…", self)
         updates_action.setToolTip(
             "How to load new versions — your library is never touched"
         )
         updates_action.triggered.connect(self._on_updates)
+
+        about_action = QAction("&About WordVault…", self)
+        about_action.setToolTip(
+            "Version, release date, and where this copy lives"
+        )
+        about_action.triggered.connect(self._on_about)
 
         github_action = QAction("WordVault on &GitHub", self)
         github_action.setToolTip(
@@ -1247,12 +1269,15 @@ class MainWindow(QMainWindow):
         help_menu.addAction(guide_action)
         help_menu.addSeparator()
         help_menu.addAction(share_action)
+        help_menu.addAction(check_action)
         help_menu.addAction(updates_action)
         help_menu.addAction(github_action)
         help_menu.addSeparator()
         help_menu.addAction(dictionary_action)
         help_menu.addAction(habits_action)
         help_menu.addAction(settings_action)
+        help_menu.addSeparator()
+        help_menu.addAction(about_action)
 
     # ------------------------------------------ personal extensions --------
     def add_extension_button(self, text: str, tooltip: str,
@@ -1305,6 +1330,171 @@ class MainWindow(QMainWindow):
 
         HelpDialog(self, document=_UPDATES_FILE,
                    title="Getting Updates").exec()
+
+    # ------------------------------------------------------- updates --
+
+    def _quiet_update_check(self) -> None:
+        """Startup check, at most once a day, status bar only.
+
+        The date of the last check is kept in QSettings; a second start
+        on the same day does nothing at all.  Failures (no network) are
+        swallowed: a writer opening the program should never be nagged
+        about GitHub."""
+        from wordvault.updater import _make_workers
+
+        today = datetime.now().date().isoformat()
+        if self._settings.value("update_last_check", "") == today:
+            return
+        self._settings.setValue("update_last_check", today)
+
+        CheckWorker, _ = _make_workers()
+        worker = CheckWorker(self)
+        self._update_workers.append(worker)
+
+        def found(info) -> None:
+            if info.is_newer:
+                self.statusBar().showMessage(
+                    f"WordVault {info.version} ({info.release_date}) is "
+                    "available: Help > Check for Updates", 30000)
+
+        worker.found.connect(found)
+        worker.finished.connect(lambda: self._update_workers.remove(worker))
+        worker.start()
+
+    def _on_check_updates(self) -> None:
+        """Help > Check for Updates: ask GitHub, then offer to install.
+
+        The check and the install both run in background threads behind
+        a small busy dialog, so the window stays responsive.  When the
+        install has finished, the writer is offered a restart; the new
+        code only takes effect in a fresh process."""
+        from PyQt6.QtWidgets import QProgressDialog
+
+        from wordvault import __version__
+        from wordvault.updater import _make_workers
+
+        CheckWorker, ApplyWorker = _make_workers()
+
+        busy = QProgressDialog("Asking GitHub for the newest version…",
+                               None, 0, 0, self)
+        busy.setWindowTitle("Check for Updates")
+        busy.setWindowModality(Qt.WindowModality.WindowModal)
+        busy.setMinimumDuration(300)
+
+        checker = CheckWorker(self)
+        self._update_workers.append(checker)
+
+        def check_failed(message: str) -> None:
+            busy.close()
+            QMessageBox.information(self, "Check for Updates", message)
+
+        def check_found(info) -> None:
+            busy.close()
+            if not info.is_newer:
+                QMessageBox.information(
+                    self, "Check for Updates",
+                    f"You are running WordVault {__version__}, which is "
+                    "the newest version.")
+                return
+            answer = QMessageBox.question(
+                self, "Update Available",
+                f"WordVault {info.version} ({info.release_date}) is "
+                f"available.  You are running {__version__}.\n\n"
+                "Install it now?  Your library is never touched by an "
+                "update; only the program's files change.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._apply_update(ApplyWorker, info.version)
+
+        checker.found.connect(check_found)
+        checker.failed.connect(check_failed)
+        checker.finished.connect(lambda: self._update_workers.remove(checker))
+        checker.start()
+
+    def _apply_update(self, ApplyWorker, new_version: str) -> None:
+        """Run the install in the background, then offer a restart."""
+        from PyQt6.QtWidgets import QProgressDialog
+
+        busy = QProgressDialog("Installing the update…", None, 0, 0, self)
+        busy.setWindowTitle("Updating WordVault")
+        busy.setWindowModality(Qt.WindowModality.WindowModal)
+        busy.setMinimumDuration(0)
+        busy.show()
+
+        worker = ApplyWorker(self)
+        self._update_workers.append(worker)
+
+        def failed(message: str) -> None:
+            busy.close()
+            QMessageBox.warning(self, "Update Not Installed", message)
+
+        def done(summary: str) -> None:
+            busy.close()
+            answer = QMessageBox.question(
+                self, "Update Installed",
+                f"{summary}\n\nWordVault {new_version} is ready; it "
+                "starts with the next launch.  Restart now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._restart()
+
+        worker.done.connect(done)
+        worker.failed.connect(failed)
+        worker.finished.connect(lambda: self._update_workers.remove(worker))
+        worker.start()
+
+    def _restart(self) -> None:
+        """Close this window (saving state as usual) and start a fresh
+        ``python -m wordvault`` with the same arguments, so the library
+        that was open comes straight back."""
+        import sys
+
+        from PyQt6.QtCore import QProcess
+
+        from wordvault.updater import program_root
+
+        args = ["-m", "wordvault", *sys.argv[1:]]
+        # Start the new one first; if that fails, we simply stay open.
+        ok, _pid = QProcess.startDetached(sys.executable, args,
+                                          str(program_root()))
+        if ok:
+            self.close()
+        else:
+            QMessageBox.warning(
+                self, "Restart",
+                "Could not start the new copy automatically.  Close "
+                "WordVault and start it again as usual.")
+
+    def _on_about(self) -> None:
+        """Help > About: version, date, and where this copy lives.
+
+        The commit id (git checkouts only) is the detail that makes a
+        bug report precise: "1.1 at 4522bdb" says exactly which code
+        ran."""
+        import platform
+
+        from PyQt6.QtCore import QT_VERSION_STR
+
+        from wordvault import RELEASE_DATE, TAGLINE, __version__
+        from wordvault.updater import current_commit, install_kind, program_root
+
+        commit = current_commit()
+        kind = {"git": "git checkout", "github-desktop": "GitHub Desktop",
+                "zip": "downloaded folder"}[install_kind()]
+        lines = [
+            f"<b>WordVault {__version__}</b> ({RELEASE_DATE})",
+            f"<i>{TAGLINE}</i>",
+            "",
+            f"Program folder: {program_root()}",
+            f"Install type: {kind}" + (f", commit {commit}" if commit else ""),
+            f"Library: {self._library_path}",
+            "",
+            f"Python {platform.python_version()}, Qt {QT_VERSION_STR}, "
+            f"{platform.system()} {platform.release()}",
+        ]
+        QMessageBox.about(self, "About WordVault", "<br>".join(lines))
 
     #: Settings names -> Qt key codes for the Disabled-keys feature.
     _SILENCEABLE_KEYS = {

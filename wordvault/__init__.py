@@ -18,8 +18,13 @@ from wordvault.storage.walker import RevisionWalker
 
 #: The program's version, shown in the window title.  Bump the number
 #: and refresh the date together when cutting a release.
-__version__ = "1.0"
-RELEASE_DATE = "August 15, 2026"
+#:
+#: This line is also how every installed copy learns that a new version
+#: exists: Help > Check for Updates downloads this file from GitHub's
+#: main branch and compares the number.  So bumping it and pushing IS
+#: publishing a release (pyproject.toml reads the number from here too).
+__version__ = "1.1"
+RELEASE_DATE = "September 12, 2026"
 
 #: The motto that follows the version everywhere it appears.
 TAGLINE = "A professional writer's open-source friend"
