@@ -23,7 +23,7 @@ from wordvault.storage.walker import RevisionWalker
 #: exists: Help > Check for Updates downloads this file from GitHub's
 #: main branch and compares the number.  So bumping it and pushing IS
 #: publishing a release (pyproject.toml reads the number from here too).
-__version__ = "1.1"
+__version__ = "1.2"
 RELEASE_DATE = "September 12, 2026"
 
 #: The motto that follows the version everywhere it appears.

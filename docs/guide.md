@@ -200,6 +200,44 @@ catches what the eye forgives — the doubled word, the rhythm that
 stumbles. (On Ubuntu this needs the standard speech system:
 `sudo apt install speech-dispatcher`.)
 
+#### A better voice: Piper
+
+The system voice is what your operating system happens to offer:
+passable on Windows, a plain robot on Ubuntu. **Piper** is a free,
+offline, neural voice that sounds like a calm human reader, and it is
+the same voice on both machines. Choose it under **Reading voice** in
+Help ▸ Settings…. Setting it up is a one-time download of two things
+into a folder of your choosing (the default is `piper` in your home
+folder):
+
+1. **The program.** From https://github.com/rhasspy/piper/releases
+   take `piper_linux_x86_64.tar.gz` (Ubuntu) or
+   `piper_windows_amd64.zip` (Windows) and unpack it in the folder;
+   it makes a `piper` sub-folder with the program inside.
+2. **A voice.** From https://huggingface.co/rhasspy/piper-voices
+   browse to a language and voice and download its two files, the
+   `.onnx` model and the `.onnx.json` beside it, into the same folder.
+   `en_US-ryan-medium` is a natural male American voice; `lessac` and
+   `amy` are female; `en_GB-alan` is British. "medium" is the good
+   balance of quality and speed.
+
+On Ubuntu, in a terminal, that whole setup is:
+
+    mkdir -p ~/piper && cd ~/piper
+    wget https://github.com/rhasspy/piper/releases/latest/download/piper_linux_x86_64.tar.gz
+    tar -xzf piper_linux_x86_64.tar.gz
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+
+Then in Settings pick **Piper (neural voice)**, point **Piper folder**
+at that folder, and choose the voice; the line beneath says "Piper
+ready" or tells you exactly what is still missing. Reading speed works
+as before. With Piper the reading light moves a **sentence** at a time
+rather than a word, because Piper does not report word timings; the
+voice reads a sentence ahead in the background so there is no pause
+between them. If Piper is chosen but not set up, the system voice reads
+instead and the status bar says why.
+
 ### Spelling, and your habits
 
 **View ▸ Check Spelling** underlines doubtful words — in the text

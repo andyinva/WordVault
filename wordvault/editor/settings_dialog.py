@@ -57,6 +57,9 @@ class SettingsDialog(QDialog):
         disabled_keys: tuple = (),
         line_light: bool = True,
         recent_panel_count: int = 10,
+        tts_engine: str = "system",
+        piper_dir: str = "",
+        piper_voice: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -109,6 +112,48 @@ class SettingsDialog(QDialog):
         self._speed_spin.setSingleStep(5)
         self._speed_spin.setSuffix(" %")
         self._speed_spin.setValue(reading_speed)
+
+        # Which voice reads aloud.  "System" is the operating system's
+        # own voice through Qt (fine on Windows, a robot on Ubuntu).
+        # "Piper" is a free neural voice that sounds human on both; it
+        # needs the Piper program and a voice file in a folder of the
+        # user's choosing (see editor/piper_voice.py).
+        from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QWidget
+
+        from wordvault.editor.piper_voice import (
+            DEFAULT_PIPER_DIR, find_piper_executable, list_voices,
+            voice_display_name,
+        )
+
+        self._engine_combo = QComboBox(self)
+        self._engine_combo.addItem("System voice", "system")
+        self._engine_combo.addItem("Piper (neural voice)", "piper")
+        self._engine_combo.setCurrentIndex(1 if tts_engine == "piper" else 0)
+
+        self._piper_dir_edit = QLineEdit(self)
+        self._piper_dir_edit.setText(piper_dir or str(DEFAULT_PIPER_DIR))
+        self._piper_dir_edit.setToolTip(
+            "The folder holding the Piper program and its voice files "
+            "(NAME.onnx and NAME.onnx.json)")
+        browse_btn = QPushButton("Browse…", self)
+        browse_btn.clicked.connect(self._browse_piper_dir)
+        piper_row = QWidget(self)
+        piper_layout = QHBoxLayout(piper_row)
+        piper_layout.setContentsMargins(0, 0, 0, 0)
+        piper_layout.addWidget(self._piper_dir_edit, 1)
+        piper_layout.addWidget(browse_btn)
+
+        self._voice_combo = QComboBox(self)
+        self._piper_status = QLabel("", self)
+        self._piper_status.setWordWrap(True)
+        self._piper_status.setStyleSheet("color: gray;")
+        self._wanted_voice = piper_voice
+        self._piper_dir_edit.editingFinished.connect(self._refresh_voices)
+        self._engine_combo.currentIndexChanged.connect(self._refresh_voices)
+        self._find_piper = find_piper_executable
+        self._list_voices = list_voices
+        self._voice_name = voice_display_name
+        self._refresh_voices()
 
         # How far back File > Recent remembers (the list itself lives
         # in QSettings; this is only its length).
@@ -212,6 +257,10 @@ class SettingsDialog(QDialog):
         form.addRow("Notes font:", self._notes_font_combo)
         form.addRow("Notes font size:", self._notes_size_spin)
         form.addRow("Reading speed:", self._speed_spin)
+        form.addRow("Reading voice:", self._engine_combo)
+        form.addRow("Piper folder:", piper_row)
+        form.addRow("Piper voice:", self._voice_combo)
+        form.addRow("", self._piper_status)
         form.addRow("Enter key:", self._enter_combo)
         form.addRow("Disabled keys:", keys_row)
         form.addRow(self._line_light_box)
@@ -269,6 +318,21 @@ class SettingsDialog(QDialog):
         return self._speed_spin.value()
 
     @property
+    def tts_engine(self) -> str:
+        """"system" or "piper"."""
+        return self._engine_combo.currentData()
+
+    @property
+    def piper_dir(self) -> str:
+        return self._piper_dir_edit.text().strip()
+
+    @property
+    def piper_voice(self) -> str:
+        """The chosen voice's file name (e.g. "en_US-ryan-medium.onnx"),
+        or "" when no voice is available."""
+        return self._voice_combo.currentData() or ""
+
+    @property
     def paragraph_return(self) -> bool:
         return self._enter_combo.currentIndex() == 0
 
@@ -310,6 +374,57 @@ class SettingsDialog(QDialog):
         return None
 
     # ----------------------------------------------------------- internals --
+
+    def _browse_piper_dir(self) -> None:
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QFileDialog.getExistingDirectory(
+            self, "Piper folder", self._piper_dir_edit.text())
+        if folder:
+            self._piper_dir_edit.setText(folder)
+            self._refresh_voices()
+
+    def _refresh_voices(self) -> None:
+        """Re-scan the Piper folder: fill the voice list and say plainly
+        what is missing, so the writer never has to guess why Piper
+        is silent.  The Piper rows are dimmed while System is chosen."""
+        from pathlib import Path
+
+        piper_on = self._engine_combo.currentData() == "piper"
+        for widget in (self._piper_dir_edit, self._voice_combo):
+            widget.setEnabled(piper_on)
+
+        folder = Path(self._piper_dir_edit.text().strip() or ".").expanduser()
+        exe = self._find_piper(folder)
+        voices = self._list_voices(folder)
+
+        previous = self._voice_combo.currentData() or self._wanted_voice
+        self._voice_combo.clear()
+        for voice in voices:
+            self._voice_combo.addItem(self._voice_name(voice), voice.name)
+        index = self._voice_combo.findData(previous)
+        if index >= 0:
+            self._voice_combo.setCurrentIndex(index)
+
+        if not piper_on:
+            self._piper_status.setText("")
+        elif exe is None and not voices:
+            self._piper_status.setText(
+                "Piper is not in this folder yet. Unpack the Piper "
+                "release archive there and add a voice (NAME.onnx and "
+                "NAME.onnx.json); see Help > User Guide > Read Aloud.")
+        elif exe is None:
+            self._piper_status.setText(
+                "Voices found, but not the Piper program (piper/piper "
+                "or piper.exe).")
+        elif not voices:
+            self._piper_status.setText(
+                "Piper found, but no voice. Download NAME.onnx and "
+                "NAME.onnx.json into this folder.")
+        else:
+            self._piper_status.setText(
+                f"Piper ready: {len(voices)} voice"
+                f"{'s' if len(voices) != 1 else ''} found.")
 
     def _update_passphrase_fields(self) -> None:
         """The passphrase pair only matters when turning encryption ON

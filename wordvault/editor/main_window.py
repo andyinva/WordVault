@@ -1538,9 +1538,25 @@ class MainWindow(QMainWindow):
             line_light=self._editor.line_light(),
             recent_panel_count=int(
                 self._settings.value("recent_panel_count", 10)),
+            tts_engine=str(self._settings.value("tts_engine", "system")),
+            piper_dir=str(self._settings.value("piper_dir", "")),
+            piper_voice=str(self._settings.value("piper_voice", "")),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
+        # The reading voice: if the engine or voice changed, forget the
+        # engine object so the next Read builds the newly chosen one.
+        voice_changed = (
+            dialog.tts_engine != str(self._settings.value("tts_engine", "system"))
+            or dialog.piper_dir != str(self._settings.value("piper_dir", ""))
+            or dialog.piper_voice != str(self._settings.value("piper_voice", ""))
+        )
+        self._settings.setValue("tts_engine", dialog.tts_engine)
+        self._settings.setValue("piper_dir", dialog.piper_dir)
+        self._settings.setValue("piper_voice", dialog.piper_voice)
+        if voice_changed:
+            self._drop_tts()
 
         # Everyday knobs: apply now, remember for next start.
         self._editor.set_idle_ms(dialog.idle_seconds * 1000)
@@ -1587,12 +1603,33 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------ read aloud --
 
     def _ensure_tts(self):
-        """The text-to-speech engine, created on first use.  Qt speaks
-        through the system's own voices (SAPI on Windows; on Ubuntu,
-        speech-dispatcher: sudo apt install speech-dispatcher).  None
-        when unavailable — explained once, not crashed over."""
+        """The text-to-speech engine, created on first use.
+
+        Two engines, chosen in Settings > Reading voice:
+
+          * System: Qt's QTextToSpeech, speaking through the operating
+            system's own voices (SAPI on Windows; on Ubuntu,
+            speech-dispatcher: sudo apt install speech-dispatcher).
+          * Piper: a free neural voice that sounds human on both
+            platforms (editor/piper_voice.py).  Needs the Piper program
+            and a voice file in the Piper folder.
+
+        None when unavailable, explained once, not crashed over.  If
+        Piper is chosen but not set up, the system voice is used for
+        this session and the status bar says why."""
         if hasattr(self, "_tts"):
             return self._tts
+
+        if str(self._settings.value("tts_engine", "system")) == "piper":
+            engine = self._make_piper_engine()
+            if engine is not None:
+                self._tts = engine
+                self._tts.sayingWord.connect(self._on_tts_word)
+                self._tts.finished.connect(self._on_tts_finished)
+                self._tts.failed.connect(self._on_tts_failed)
+                self._apply_reading_speed()
+                return self._tts
+
         try:
             from PyQt6.QtTextToSpeech import QTextToSpeech
         except ImportError:
@@ -1602,7 +1639,8 @@ class MainWindow(QMainWindow):
                 "This PyQt6 installation lacks the QtTextToSpeech "
                 "module.\n\nUsually fixed by:  pip install --upgrade "
                 "PyQt6\n(On Ubuntu, also:  sudo apt install "
-                "speech-dispatcher)")
+                "speech-dispatcher)\n\nOr choose the Piper voice in "
+                "Settings, which needs neither.")
             return None
         self._tts = QTextToSpeech(self)
         self._tts.stateChanged.connect(self._on_tts_state)
@@ -1613,6 +1651,51 @@ class MainWindow(QMainWindow):
             self._tts.sayingWord.connect(self._on_tts_word)
         self._apply_reading_speed()
         return self._tts
+
+    def _make_piper_engine(self):
+        """Build the Piper engine from Settings, or None (with a status
+        bar line saying what is missing) so the caller can fall back."""
+        from wordvault.editor.piper_voice import (
+            PiperEngine, find_piper_executable, list_voices,
+            player_available,
+        )
+
+        folder = str(self._settings.value("piper_dir", "")) or None
+        exe = find_piper_executable(folder)
+        voices = list_voices(folder)
+        wanted = str(self._settings.value("piper_voice", ""))
+        voice = next((v for v in voices if v.name == wanted),
+                     voices[0] if voices else None)
+        if exe is None or voice is None or not player_available():
+            missing = ("the Piper program" if exe is None
+                       else "a voice file" if voice is None
+                       else "a WAV player (sudo apt install alsa-utils)")
+            self.statusBar().showMessage(
+                f"Piper voice not ready ({missing} not found); using the "
+                "system voice. See Settings > Reading voice.", 8000)
+            return None
+        return PiperEngine(exe, voice, self)
+
+    def _drop_tts(self) -> None:
+        """Forget the engine (after Settings changed the voice) so the
+        next Read builds the newly chosen one."""
+        tts = getattr(self, "_tts", None)
+        if tts is not None and self._tts_speaking():
+            tts.stop()
+        if hasattr(self, "_tts"):
+            del self._tts
+        self._read_btn.setText("🔊 Read")
+
+    def _tts_speaking(self) -> bool:
+        """Is the current engine (either kind) reading right now?"""
+        tts = getattr(self, "_tts", None)
+        if tts is None:
+            return False
+        if hasattr(tts, "speaking"):          # PiperEngine
+            return bool(tts.speaking)
+        from PyQt6.QtTextToSpeech import QTextToSpeech
+
+        return tts.state() == QTextToSpeech.State.Speaking
 
     def _reading_speed_percent(self) -> int:
         """The Settings pace, clamped to the dialog's 50..150 range."""
@@ -1646,9 +1729,7 @@ class MainWindow(QMainWindow):
         tts = self._ensure_tts()
         if tts is None:
             return
-        from PyQt6.QtTextToSpeech import QTextToSpeech
-
-        if tts.state() == QTextToSpeech.State.Speaking:
+        if self._tts_speaking():
             tts.stop()
             self._read_btn.setText("🔊 Read")
             return
@@ -1692,10 +1773,23 @@ class MainWindow(QMainWindow):
         from PyQt6.QtTextToSpeech import QTextToSpeech
 
         if state != QTextToSpeech.State.Speaking:
-            self._read_btn.setText("🔊 Read")
-            self._read_highlight = None
-            self._read_positions = []
-            self._apply_age_colors()      # repaint without the light
+            self._on_tts_finished()
+
+    def _on_tts_finished(self) -> None:
+        """Either engine has stopped: the button offers to read again
+        and the reading light goes out."""
+        self._read_btn.setText("🔊 Read")
+        self._read_highlight = None
+        self._read_positions = []
+        self._apply_age_colors()      # repaint without the light
+
+    def _on_tts_failed(self, message: str) -> None:
+        """Piper hit a problem mid-read: say so and forget the engine,
+        so the next Read starts a fresh one (the setting is left alone;
+        a one-off hiccup should not silently change the writer's
+        choice of voice)."""
+        self.statusBar().showMessage(f"Piper: {message}", 10000)
+        self._drop_tts()
 
     def _on_tts_word(self, _word, _utterance, start, length) -> None:
         """The engine names the word it is speaking (an offset into
