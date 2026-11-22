@@ -121,6 +121,11 @@ class FormatStudio(QDialog):
         self._printer = QPrinter()
         self._preview = QPrintPreviewWidget(self._printer, self)
         self._preview.paintRequested.connect(self._paint_preview)
+        # Black ink on the white page even in dark mode (see the
+        # helper's explanation of why a preview needs telling).
+        from wordvault.printing.renderer import ink_on_paper
+
+        ink_on_paper(self._preview)
         right.addWidget(self._preview, stretch=1)
 
         bottom = QHBoxLayout()

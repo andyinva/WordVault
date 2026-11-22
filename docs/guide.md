@@ -238,6 +238,32 @@ voice reads a sentence ahead in the background so there is no pause
 between them. If Piper is chosen but not set up, the system voice reads
 instead and the status bar says why.
 
+#### The smoothest voice: Kokoro
+
+Piper is clear, but over a long essay it can sound choppy, most of all
+when slowed down. **Kokoro** is a newer free, offline voice with a
+smoother, more natural flow, and it needs no graphics card. Setting it
+up is one command, run once from the WordVault folder with WordVault
+closed:
+
+    venv/bin/python tools/install_kokoro.py          (Ubuntu)
+    venv\Scripts\python tools\install_kokoro.py      (Windows)
+
+It installs the `kokoro-onnx` package, downloads the voice files (about
+340 MB) into a `kokoro` folder in your home folder, speaks a test
+sentence, and makes Kokoro the **Reading voice** with **George**, a
+British reader, at 100% speed. Other readers, British and American, men
+and women, are under **Kokoro voice** in Help ▸ Settings….
+
+A few things differ from Piper. The first Read after starting WordVault
+takes a few seconds while the voice loads; after that it starts almost
+at once. Sentences join without a gap, with a short breath between
+them and a longer one between paragraphs. Abbreviations no longer cause
+a false pause, and the common ones are spoken as words: "Matt. 24:3" is
+read "Matthew 24, verse 3", and "cf." is read "compare". As with Piper
+the reading light moves a sentence at a time. Kokoro's natural pace is
+100%; it stays smooth when slowed, but 70% will feel slow.
+
 ### Spelling, and your habits
 
 **View ▸ Check Spelling** underlines doubtful words — in the text

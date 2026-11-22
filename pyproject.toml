@@ -47,6 +47,10 @@ crypto = ["cryptography>=41"]
 encrypted-db = ["sqlcipher3-binary; sys_platform == 'linux'"]
 # Spell checking (View > Check Spelling):
 spelling = ["pyspellchecker>=0.8"]
+# The Kokoro reading voice (Settings > Reading voice > Kokoro).  Not
+# part of [full] because it pulls in a large runtime and needs a
+# 340 MB model download; tools/install_kokoro.py does both steps.
+kokoro = ["kokoro-onnx"]
 # Everything a working install needs, in one word.  Setting up a fresh
 # machine (Ubuntu or Windows) is then:
 #     python -m venv venv

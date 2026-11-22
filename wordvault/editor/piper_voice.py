@@ -149,20 +149,75 @@ def rate_to_length_scale(rate: float) -> float:
 # after it, which does not.  Or a blank line on its own.
 _SENTENCE_END = re.compile(r"([.!?][\"'”’)]*)(\s+)|\n{2,}")
 
+# Words that end in a period WITHOUT ending the sentence.  Compared in
+# lower case, without the final period.  Two families: everyday
+# abbreviations, and the Bible-book abbreviations a writer on Scripture
+# uses constantly ("Matt. 24", "Rev. 6:12").  A voice that pauses after
+# every one of these sounds choppy, so the splitter must know them.
+_ABBREVIATIONS = frozenset("""
+    mr mrs ms dr prof rev st sr jr fr gen col capt lt sgt
+    cf vs viz e.g i.e ca c approx no nos vol vols ch chs chap ed eds
+    p pp v vv f ff fig figs sec ibid op cit
+    gen ex exod lev num deut dt josh judg jdg sam kgs chr chron neh
+    esth ps pss psa prov eccl eccles isa jer lam ezek dan hos obad
+    mic nah hab zeph hag zech mal
+    matt mt mk lk jn rom cor gal eph phil col thess tim tit phlm philem
+    heb jas pet rev apoc
+""".split())
+
+# The last word before a period: letters, with inner periods allowed so
+# "e.g" and "i.e" are caught whole.
+_LAST_WORD = re.compile(r"([A-Za-z]+(?:\.[A-Za-z]+)*)$")
+
+
+def _is_abbreviation_stop(text: str, period: int, after: int) -> bool:
+    """Is the period at text[period] part of an abbreviation rather
+    than the end of a sentence?
+
+    ``after`` is where the next word begins.  Three plain rules:
+
+      * the word before the period is a known abbreviation
+        ("Matt.", "cf.", "Dr.");
+      * it is a single capital letter, an initial ("W. Wrede");
+      * the next word starts in lower case, which a new sentence
+        never does ("approx. ten years").
+    """
+    match = _LAST_WORD.search(text, 0, period)
+    if match:
+        word = match.group(1)
+        if word.lower() in _ABBREVIATIONS:
+            return True
+        if len(word) == 1 and word.isupper():
+            return True
+    return after < len(text) and text[after].islower()
+
 
 def split_sentences(text: str) -> list[tuple[int, int]]:
     """Cut text into sentences; return (start, length) spans into text.
 
     A sentence ends at . ! or ? followed by whitespace (closing quotes
-    allowed in between), or at a blank line.  Spans skip leading and
-    trailing whitespace so the reading light hugs the words.  Very long
-    sentence-less stretches (a list, say) are still one span each; Piper
-    copes with those fine.
+    allowed in between), or at a blank line.  A period that only closes
+    an abbreviation ("Matt. 24", "cf. Joel 2") does NOT end a sentence
+    (see _is_abbreviation_stop), so the voice does not pause there.
+    Spans skip leading and trailing whitespace so the reading light
+    hugs the words.  Very long sentence-less stretches (a list, say)
+    are still one span each; the voices cope with those fine.
     """
     spans = []
     position = 0
     for match in _SENTENCE_END.finditer(text):
-        end = match.end(1) if match.group(1) else match.start()
+        if match.group(1):
+            closing = match.group(1)
+            # Only a bare period can belong to an abbreviation; "?" and
+            # "!" and a period followed by a closing quote always end
+            # the sentence.  A line break after it ends it too.
+            if (closing == "." and "\n" not in match.group(2)
+                    and _is_abbreviation_stop(text, match.start(1),
+                                              match.end())):
+                continue
+            end = match.end(1)
+        else:
+            end = match.start()
         spans.append((position, end))
         position = match.end()
     spans.append((position, len(text)))

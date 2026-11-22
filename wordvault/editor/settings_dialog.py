@@ -60,6 +60,7 @@ class SettingsDialog(QDialog):
         tts_engine: str = "system",
         piper_dir: str = "",
         piper_voice: str = "",
+        kokoro_voice: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle("WordVault Settings")
@@ -118,6 +119,9 @@ class SettingsDialog(QDialog):
         # "Piper" is a free neural voice that sounds human on both; it
         # needs the Piper program and a voice file in a folder of the
         # user's choosing (see editor/piper_voice.py).
+        # "Kokoro" is a newer neural voice with a smoother, more natural
+        # flow; it needs the kokoro-onnx package and two model files,
+        # fetched once by tools/install_kokoro.py (editor/kokoro_voice.py).
         from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QWidget
 
         from wordvault.editor.piper_voice import (
@@ -128,7 +132,10 @@ class SettingsDialog(QDialog):
         self._engine_combo = QComboBox(self)
         self._engine_combo.addItem("System voice", "system")
         self._engine_combo.addItem("Piper (neural voice)", "piper")
-        self._engine_combo.setCurrentIndex(1 if tts_engine == "piper" else 0)
+        self._engine_combo.addItem("Kokoro (natural voice)", "kokoro")
+        # Select the saved engine; an unknown value falls back to System.
+        self._engine_combo.setCurrentIndex(
+            max(0, self._engine_combo.findData(tts_engine)))
 
         self._piper_dir_edit = QLineEdit(self)
         self._piper_dir_edit.setText(piper_dir or str(DEFAULT_PIPER_DIR))
@@ -153,6 +160,18 @@ class SettingsDialog(QDialog):
         self._find_piper = find_piper_executable
         self._list_voices = list_voices
         self._voice_name = voice_display_name
+
+        # The Kokoro voice: a fixed list of English readers, George
+        # (British) first because he is the default.
+        from wordvault.editor.kokoro_voice import DEFAULT_VOICE, ENGLISH_VOICES
+
+        self._kokoro_combo = QComboBox(self)
+        for voice_id, label in ENGLISH_VOICES.items():
+            self._kokoro_combo.addItem(label, voice_id)
+        self._kokoro_combo.setCurrentIndex(max(
+            0, self._kokoro_combo.findData(kokoro_voice or DEFAULT_VOICE)))
+        self._kokoro_combo.setToolTip(
+            "Who reads aloud when Reading voice is Kokoro")
         self._refresh_voices()
 
         # How far back File > Recent remembers (the list itself lives
@@ -260,6 +279,7 @@ class SettingsDialog(QDialog):
         form.addRow("Reading voice:", self._engine_combo)
         form.addRow("Piper folder:", piper_row)
         form.addRow("Piper voice:", self._voice_combo)
+        form.addRow("Kokoro voice:", self._kokoro_combo)
         form.addRow("", self._piper_status)
         form.addRow("Enter key:", self._enter_combo)
         form.addRow("Disabled keys:", keys_row)
@@ -319,8 +339,13 @@ class SettingsDialog(QDialog):
 
     @property
     def tts_engine(self) -> str:
-        """"system" or "piper"."""
+        """"system", "piper" or "kokoro"."""
         return self._engine_combo.currentData()
+
+    @property
+    def kokoro_voice(self) -> str:
+        """The chosen Kokoro voice id (e.g. "bm_george")."""
+        return self._kokoro_combo.currentData() or ""
 
     @property
     def piper_dir(self) -> str:
@@ -387,12 +412,18 @@ class SettingsDialog(QDialog):
     def _refresh_voices(self) -> None:
         """Re-scan the Piper folder: fill the voice list and say plainly
         what is missing, so the writer never has to guess why Piper
-        is silent.  The Piper rows are dimmed while System is chosen."""
+        is silent.  The Piper rows are dimmed unless Piper is chosen,
+        and the Kokoro row unless Kokoro is; with Kokoro chosen, the
+        status line reports on Kokoro instead."""
         from pathlib import Path
 
-        piper_on = self._engine_combo.currentData() == "piper"
+        engine = self._engine_combo.currentData()
+        piper_on = engine == "piper"
         for widget in (self._piper_dir_edit, self._voice_combo):
             widget.setEnabled(piper_on)
+        # The Kokoro combo is built after the first call to this method.
+        if hasattr(self, "_kokoro_combo"):
+            self._kokoro_combo.setEnabled(engine == "kokoro")
 
         folder = Path(self._piper_dir_edit.text().strip() or ".").expanduser()
         exe = self._find_piper(folder)
@@ -406,7 +437,9 @@ class SettingsDialog(QDialog):
         if index >= 0:
             self._voice_combo.setCurrentIndex(index)
 
-        if not piper_on:
+        if engine == "kokoro":
+            self._piper_status.setText(self._kokoro_status_text())
+        elif not piper_on:
             self._piper_status.setText("")
         elif exe is None and not voices:
             self._piper_status.setText(
@@ -425,6 +458,16 @@ class SettingsDialog(QDialog):
             self._piper_status.setText(
                 f"Piper ready: {len(voices)} voice"
                 f"{'s' if len(voices) != 1 else ''} found.")
+
+    def _kokoro_status_text(self) -> str:
+        """One plain line: Kokoro is ready, or what to do about it."""
+        from wordvault.editor.kokoro_voice import what_is_missing
+
+        missing = what_is_missing()
+        if missing is None:
+            return "Kokoro ready. Reading speed 100% is its natural pace."
+        return (f"Kokoro is not ready: {missing} was not found. In the "
+                "WordVault folder run:  python tools/install_kokoro.py")
 
     def _update_passphrase_fields(self) -> None:
         """The passphrase pair only matters when turning encryption ON

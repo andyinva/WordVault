@@ -94,6 +94,22 @@ of its title — the list narrows as you type, Enter opens the top match.
 under the editor, searching as you type; Enter jumps to the next match,
 Shift+Enter to the previous, Esc closes it.
 
+**View ▸ Find Boxes** puts a small **Find:** box in the caption bar of
+each editor, beside the titles "WV Editor" and "WV Notes Editor". Each
+box searches its own pane as you type, so the notes can be searched
+separately from the document. Enter jumps to the next match, Shift+Enter
+to the previous, and Esc returns you to the text. Uncheck the menu item
+and the boxes are gone.
+
+While a search is showing, in a Find box or the Ctrl+F bar, **every
+match is marked in light blue**, and the number of matches ("12 found")
+stands just after the box. Capital and small letters count alike, and a
+match inside a longer word counts too (searching for *spirit* also
+marks *spiritual*). The match the cursor is on keeps the darker
+selection colour. Empty the box, close the bar, or switch the boxes off,
+and the marks are gone; they are only on the screen and never change
+the document.
+
 **Ctrl+Shift+F** searches every document in the library instantly —
 word, phrase, or pattern. Double-click a result to jump straight to it.
 To change wording everywhere, fill in the Replace field and click

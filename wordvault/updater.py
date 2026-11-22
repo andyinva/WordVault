@@ -331,3 +331,77 @@ def _make_workers():
                 self.failed.emit(str(exc))
 
     return CheckWorker, ApplyWorker
+
+
+# ---------------------------------------------------------------------------
+# Keeping background workers alive until they have finished
+# ---------------------------------------------------------------------------
+#
+# A worker thread that is still running when its Qt object is destroyed
+# brings the whole program down ("QThread: Destroyed while thread is
+# still running", then an abort).  That used to happen when WordVault
+# was closed during the few seconds the startup update check was asking
+# GitHub: the worker belonged to the window, so closing the window
+# destroyed it mid-request.
+#
+# The cure has three parts:
+#   * workers belong to NO window; this module holds on to each one
+#     until it has finished (start_worker);
+#   * a closing window lets go of its workers, so a late answer is not
+#     delivered to a window that no longer exists (release_workers);
+#   * when the program exits, it first waits for any worker still
+#     running (_wait_for_workers).  The window is already gone by then,
+#     so the writer never sees the wait; a version check gives up after
+#     TIMEOUT seconds at most, and an update being installed is allowed
+#     to finish rather than being cut off half way.
+
+_running_workers: list = []      # every worker started and not yet done
+_exit_hook_installed = False
+
+
+def start_worker(worker) -> None:
+    """Start a CheckWorker or ApplyWorker and keep it alive until it
+    has finished, whatever happens to the window that asked for it."""
+    global _exit_hook_installed
+    if not _exit_hook_installed:
+        import atexit
+
+        atexit.register(_wait_for_workers)
+        _exit_hook_installed = True
+    _running_workers.append(worker)
+    worker.finished.connect(lambda: _forget_worker(worker))
+    worker.start()
+
+
+def _forget_worker(worker) -> None:
+    """A worker has finished: stop holding on to it."""
+    if worker in _running_workers:
+        _running_workers.remove(worker)
+
+
+def release_workers(workers: list) -> None:
+    """A window is closing: cut the wires from its workers to it.
+
+    The workers themselves carry on to a clean finish (start_worker is
+    holding them); they simply have nobody left to report to.  The
+    window's own list is emptied."""
+    for worker in list(workers):
+        for name in ("found", "failed", "done"):
+            signal = getattr(worker, name, None)
+            if signal is None:
+                continue                  # this kind of worker lacks it
+            try:
+                signal.disconnect()
+            except (TypeError, RuntimeError):
+                pass                      # nothing was connected
+    workers.clear()
+
+
+def _wait_for_workers() -> None:
+    """Program exit: let every worker still running come to its end."""
+    for worker in list(_running_workers):
+        try:
+            worker.wait()
+        except RuntimeError:
+            pass                          # its Qt object is already gone
+    _running_workers.clear()

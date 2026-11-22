@@ -285,3 +285,47 @@ def test_inline_bold_run(document):
         it += 1
     assert ("bold", True) in weights
     assert any(not bold for _t, bold in weights)     # body stays regular
+
+
+def test_extra_blank_lines_print_as_full_lines(qapp):
+    """One blank line only separates paragraphs.  Every blank line
+    beyond it must print as an empty line exactly as tall as a line of
+    body text ("I would like blank lines to have the same spacing as
+    the lines with text", Nov 2026); before, extra blank lines printed
+    nothing at all."""
+    from PyQt6.QtCore import QSizeF
+
+    from wordvault.printing.renderer import text_area_pt
+
+    fmt = load_format("formats/essay.wvfmt")
+
+    def laid_out(text):
+        document = build_print_document(text, fmt)
+        document.setPageSize(QSizeF(*text_area_pt(fmt)))
+        document.documentLayout().documentSize()      # force the layout
+        return document
+
+    def y_of_last_paragraph(text):
+        document = laid_out(text)
+        return document.documentLayout().blockBoundingRect(
+            document.lastBlock()).y()
+
+    # The distance between two lines of the same paragraph: one line
+    # of body text, as the eye sees it.
+    # (The document is kept in a variable on purpose: its layout
+    # belongs to it and must not outlive it.)
+    paragraph = laid_out("word " * 60)
+    lines = paragraph.lastBlock().layout()
+    one_line = lines.lineAt(1).y() - lines.lineAt(0).y()
+
+    one_blank = y_of_last_paragraph("First.\n\nSecond.")
+    two_blanks = y_of_last_paragraph("First.\n\n\nSecond.")
+    three_blanks = y_of_last_paragraph("First.\n\n\n\nSecond.")
+    assert two_blanks - one_blank == pytest.approx(one_line, abs=0.5)
+    assert three_blanks - two_blanks == pytest.approx(one_line, abs=0.5)
+
+    # Blank lines at the very top or the very end add nothing: no
+    # empty space above the title, no empty last page.
+    plain = laid_out("First.\n\nSecond.")
+    padded = laid_out("\n\n\nFirst.\n\nSecond.\n\n\n\n")
+    assert padded.blockCount() == plain.blockCount()

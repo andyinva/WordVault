@@ -150,3 +150,13 @@ headings, `> ` quotes, `- ` bullets, `1. ` numbered items (renumbered
 sequentially per list), `**bold**` / `*italic*` / `***both***` inline
 runs, and blank-line paragraph separation (consecutive plain lines join
 into one paragraph). Everything else prints as body text.
+
+**Blank lines.** One blank line separates paragraphs; the gap it
+prints is the style's `space_after_pt` (zero in a book format, where
+the first-line indent marks the paragraph instead). Each blank line
+*beyond* the first prints as a real empty line, exactly as tall as a
+line of body text. So to open up a full line of space between two
+paragraphs, leave two blank lines between them; three blank lines give
+two empty lines, and so on. To make *every* paragraph gap a full line,
+raise the body's `space_after_pt` instead (in Format Studio: Body,
+Space after).

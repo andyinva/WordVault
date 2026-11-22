@@ -134,6 +134,11 @@ class EditorPane(QPlainTextEdit):
         # ExtraSelections the window sets; see setExtraSelections.
         self._line_light_on = False
         self._base_selections: list = []
+        # Find marks (every match of the word being searched for) are
+        # a layer of their own, laid OVER the other decorations, so
+        # the age colors, reading light and history wash can change
+        # without wiping them out; see set_find_selections.
+        self._find_selections: list = []
         from PyQt6.QtGui import QColor
 
         self._line_light_tint = QColor("#eef3f9")   # light-mode default
@@ -412,6 +417,13 @@ class EditorPane(QPlainTextEdit):
         self._base_selections = list(selections)
         self._apply_with_line_light()
 
+    def set_find_selections(self, selections) -> None:
+        """The marks on every match of the current Find (find_bar.py).
+        Kept apart from the other decorations and painted on top of
+        them; an empty list takes the marks away."""
+        self._find_selections = list(selections)
+        self._apply_with_line_light()
+
     def set_line_light_color(self, color) -> None:
         """The tint itself — set by the window's theme applier (a calm
         blue-gray wash in light mode, its counterpart in dark).  Fixed
@@ -437,6 +449,7 @@ class EditorPane(QPlainTextEdit):
             cursor.clearSelection()
             sel.cursor = cursor
             extra.insert(0, sel)          # underneath everything else
+        extra += self._find_selections    # find marks on top of it all
         super().setExtraSelections(extra)
 
     def _refresh_line_light(self) -> None:

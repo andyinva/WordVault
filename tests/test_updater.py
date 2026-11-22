@@ -172,3 +172,88 @@ def test_apply_git_update_pulls_a_clean_checkout(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "_run_git", fake_git)
     summary = updater.apply_git_update(tmp_path)
     assert summary == "Updated aaaaaaa -> bbbbbbb."
+
+
+# ------------------------------------------- closing during a check --
+
+def test_closing_during_an_update_check_is_safe():
+    """Closing WordVault while the startup update check was still
+    asking GitHub destroyed the worker thread mid-request and aborted
+    the program ("QThread: Destroyed while thread is still running").
+    Workers now belong to no window and are kept alive until done."""
+    import gc
+    import os
+    import threading
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    pytest.importorskip("PyQt6.QtWidgets", exc_type=ImportError)
+    from PyQt6.QtWidgets import QApplication, QWidget
+
+    from wordvault import updater
+
+    app = QApplication.instance() or QApplication([])
+    CheckWorker, _ = updater._make_workers()
+
+    # A check that is "on the network" until we say otherwise.
+    answer = threading.Event()
+
+    class SlowCheck(CheckWorker):
+        def run(self) -> None:
+            answer.wait(10)
+            self.found.emit("late answer")
+
+    window = QWidget()                    # stands in for the main window
+    received = []
+    worker = SlowCheck()
+    worker.found.connect(received.append)
+    mine = [worker]
+    updater.start_worker(worker)
+    assert worker in updater._running_workers
+
+    # The window closes while the check is still out: it lets go...
+    updater.release_workers(mine)
+    assert mine == []
+    window.deleteLater()
+    del window, worker
+    gc.collect()
+    app.processEvents()                   # ...and is really destroyed.
+
+    # The check is still running, and still safely held.
+    assert len(updater._running_workers) >= 1
+    assert updater._running_workers[-1].isRunning()
+
+    # GitHub finally answers: the worker ends cleanly, nobody is told.
+    answer.set()
+    end = time.monotonic() + 5
+    while updater._running_workers and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert updater._running_workers == []
+    assert received == []
+
+
+def test_exit_waits_for_a_running_worker():
+    """At program exit a worker still running is waited for, not
+    destroyed under its own feet."""
+    import os
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    pytest.importorskip("PyQt6.QtWidgets", exc_type=ImportError)
+    from PyQt6.QtWidgets import QApplication
+
+    from wordvault import updater
+
+    QApplication.instance() or QApplication([])
+    CheckWorker, _ = updater._make_workers()
+
+    class ShortCheck(CheckWorker):
+        def run(self) -> None:
+            time.sleep(0.3)
+
+    worker = ShortCheck()
+    updater.start_worker(worker)
+    updater._wait_for_workers()           # what atexit calls
+    assert worker.isFinished()
+    assert updater._running_workers == []

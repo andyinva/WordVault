@@ -256,6 +256,8 @@ class MainWindow(QMainWindow):
             self._settings.value("autocorrect", True, type=bool)
         )
         self._refresh_autocorrect()
+        if self._settings.value("find_boxes", False, type=bool):
+            self._find_boxes_action.setChecked(True)
 
         # Theme: photograph the platform's REAL look before anything
         # is touched — style name AND the actual startup palette (the
@@ -315,7 +317,9 @@ class MainWindow(QMainWindow):
         # The Help menu has the loud version (Check for Updates).
         from PyQt6.QtCore import QTimer
 
-        self._update_workers = []   # keeps background threads alive
+        # This window's update workers, so closing can let go of them
+        # (the updater module, not the window, keeps them alive).
+        self._update_workers = []
         QTimer.singleShot(4000, self._quiet_update_check)
 
     # ---------------------------------- window-state persistence -----------
@@ -461,20 +465,47 @@ class MainWindow(QMainWindow):
         # editor would be a trap, so the editors get the look without
         # the dock behaviors.  Plain unstyled labels follow the
         # palette, so dark mode dresses them for free.
+        #
+        # Each caption bar can also carry a small "Find:" box for its
+        # own pane (Nov 2026 request), shown by View ▸ Find Boxes.  The
+        # two boxes must LINE UP, so both caption labels are given the
+        # same fixed width: the longer caption plus about an inch.
+        from PyQt6.QtWidgets import QHBoxLayout
+
+        from wordvault.editor.find_bar import CaptionFind
+
+        captions = ("WV Editor", "WV Notes Editor")
+        probe = QLabel(self)                       # only to measure text
+        caption_width = (
+            max(probe.fontMetrics().horizontalAdvance(c) for c in captions)
+            + probe.logicalDpiX())                 # one inch of screen
+        probe.deleteLater()
+        self._caption_finds: list[CaptionFind] = []
+
         def captioned(widget, text: str) -> QWidget:
             label = QLabel(text, self)
-            label.setContentsMargins(6, 3, 6, 2)
+            label.setFixedWidth(caption_width)     # so the Finds align
+            find = CaptionFind(widget, self)       # hidden until asked for
+            self._caption_finds.append(find)
+            # The caption row: title at the left, Find after it, and
+            # empty space to the right edge.
+            row = QHBoxLayout()
+            row.setContentsMargins(6, 3, 6, 2)
+            row.setSpacing(0)
+            row.addWidget(label)
+            row.addWidget(find)
+            row.addStretch(1)
             host = QWidget(self)
             box = QVBoxLayout(host)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(0)
-            box.addWidget(label)
+            box.addLayout(row)
             box.addWidget(widget, stretch=1)
             return host
 
         self._split = QSplitter(Qt.Orientation.Vertical, self)
-        self._split.addWidget(captioned(self._editor, "WV Editor"))
-        self._split.addWidget(captioned(self._notes, "WV Notes Editor"))
+        self._split.addWidget(captioned(self._editor, captions[0]))
+        self._split.addWidget(captioned(self._notes, captions[1]))
         self._split.setStretchFactor(0, 2)   # document: 2/3
         self._split.setStretchFactor(1, 1)   # notes: 1/3
         self._split.setChildrenCollapsible(True)
@@ -1030,6 +1061,16 @@ class MainWindow(QMainWindow):
         )
         view_menu.addAction(self._autocorrect_action)
 
+        # A "Find:" box in the caption bar of each editor, searching
+        # that pane as you type.  Unchecked, the boxes are not there.
+        self._find_boxes_action = QAction("Find &Boxes", self)
+        self._find_boxes_action.setCheckable(True)
+        self._find_boxes_action.setToolTip(
+            "Show a Find box beside the titles “WV Editor” and “WV "
+            "Notes Editor”; each searches its own pane as you type")
+        self._find_boxes_action.toggled.connect(self._on_toggle_find_boxes)
+        view_menu.addAction(self._find_boxes_action)
+
         view_menu.addSeparator()
 
         focus_action = QAction("&Focus Current Section", self)
@@ -1340,7 +1381,7 @@ class MainWindow(QMainWindow):
         on the same day does nothing at all.  Failures (no network) are
         swallowed: a writer opening the program should never be nagged
         about GitHub."""
-        from wordvault.updater import _make_workers
+        from wordvault.updater import _make_workers, start_worker
 
         today = datetime.now().date().isoformat()
         if self._settings.value("update_last_check", "") == today:
@@ -1348,18 +1389,29 @@ class MainWindow(QMainWindow):
         self._settings.setValue("update_last_check", today)
 
         CheckWorker, _ = _make_workers()
-        worker = CheckWorker(self)
+        # No parent: a worker owned by the window was destroyed with it
+        # when WordVault was closed mid-check, which crashed the program.
+        worker = CheckWorker()
         self._update_workers.append(worker)
 
         def found(info) -> None:
             if info.is_newer:
-                self.statusBar().showMessage(
-                    f"WordVault {info.version} ({info.release_date}) is "
-                    "available: Help > Check for Updates", 30000)
+                try:
+                    self.statusBar().showMessage(
+                        f"WordVault {info.version} ({info.release_date}) "
+                        "is available: Help > Check for Updates", 30000)
+                except RuntimeError:
+                    pass      # the window was closed before GitHub answered
 
         worker.found.connect(found)
-        worker.finished.connect(lambda: self._update_workers.remove(worker))
-        worker.start()
+        worker.finished.connect(lambda: self._forget_update_worker(worker))
+        start_worker(worker)
+
+    def _forget_update_worker(self, worker) -> None:
+        """An update worker has finished: drop it from this window's
+        list (it may already be gone if the window let go of it)."""
+        if worker in self._update_workers:
+            self._update_workers.remove(worker)
 
     def _on_check_updates(self) -> None:
         """Help > Check for Updates: ask GitHub, then offer to install.
@@ -1371,7 +1423,7 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QProgressDialog
 
         from wordvault import __version__
-        from wordvault.updater import _make_workers
+        from wordvault.updater import _make_workers, start_worker
 
         CheckWorker, ApplyWorker = _make_workers()
 
@@ -1381,7 +1433,7 @@ class MainWindow(QMainWindow):
         busy.setWindowModality(Qt.WindowModality.WindowModal)
         busy.setMinimumDuration(300)
 
-        checker = CheckWorker(self)
+        checker = CheckWorker()            # no parent; see the quiet check
         self._update_workers.append(checker)
 
         def check_failed(message: str) -> None:
@@ -1409,8 +1461,8 @@ class MainWindow(QMainWindow):
 
         checker.found.connect(check_found)
         checker.failed.connect(check_failed)
-        checker.finished.connect(lambda: self._update_workers.remove(checker))
-        checker.start()
+        checker.finished.connect(lambda: self._forget_update_worker(checker))
+        start_worker(checker)
 
     def _apply_update(self, ApplyWorker, new_version: str) -> None:
         """Run the install in the background, then offer a restart."""
@@ -1422,7 +1474,7 @@ class MainWindow(QMainWindow):
         busy.setMinimumDuration(0)
         busy.show()
 
-        worker = ApplyWorker(self)
+        worker = ApplyWorker()             # no parent; see the quiet check
         self._update_workers.append(worker)
 
         def failed(message: str) -> None:
@@ -1440,10 +1492,12 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.StandardButton.Yes:
                 self._restart()
 
+        from wordvault.updater import start_worker
+
         worker.done.connect(done)
         worker.failed.connect(failed)
-        worker.finished.connect(lambda: self._update_workers.remove(worker))
-        worker.start()
+        worker.finished.connect(lambda: self._forget_update_worker(worker))
+        start_worker(worker)
 
     def _restart(self) -> None:
         """Close this window (saving state as usual) and start a fresh
@@ -1541,6 +1595,7 @@ class MainWindow(QMainWindow):
             tts_engine=str(self._settings.value("tts_engine", "system")),
             piper_dir=str(self._settings.value("piper_dir", "")),
             piper_voice=str(self._settings.value("piper_voice", "")),
+            kokoro_voice=str(self._settings.value("kokoro_voice", "")),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1551,10 +1606,12 @@ class MainWindow(QMainWindow):
             dialog.tts_engine != str(self._settings.value("tts_engine", "system"))
             or dialog.piper_dir != str(self._settings.value("piper_dir", ""))
             or dialog.piper_voice != str(self._settings.value("piper_voice", ""))
+            or dialog.kokoro_voice != str(self._settings.value("kokoro_voice", ""))
         )
         self._settings.setValue("tts_engine", dialog.tts_engine)
         self._settings.setValue("piper_dir", dialog.piper_dir)
         self._settings.setValue("piper_voice", dialog.piper_voice)
+        self._settings.setValue("kokoro_voice", dialog.kokoro_voice)
         if voice_changed:
             self._drop_tts()
 
@@ -1605,7 +1662,7 @@ class MainWindow(QMainWindow):
     def _ensure_tts(self):
         """The text-to-speech engine, created on first use.
 
-        Two engines, chosen in Settings > Reading voice:
+        Three engines, chosen in Settings > Reading voice:
 
           * System: Qt's QTextToSpeech, speaking through the operating
             system's own voices (SAPI on Windows; on Ubuntu,
@@ -1613,15 +1670,20 @@ class MainWindow(QMainWindow):
           * Piper: a free neural voice that sounds human on both
             platforms (editor/piper_voice.py).  Needs the Piper program
             and a voice file in the Piper folder.
+          * Kokoro: a newer neural voice with a smoother, more natural
+            flow (editor/kokoro_voice.py).  Needs the kokoro-onnx
+            package and its model files (tools/install_kokoro.py).
 
         None when unavailable, explained once, not crashed over.  If
-        Piper is chosen but not set up, the system voice is used for
-        this session and the status bar says why."""
+        Piper or Kokoro is chosen but not set up, the system voice is
+        used for this session and the status bar says why."""
         if hasattr(self, "_tts"):
             return self._tts
 
-        if str(self._settings.value("tts_engine", "system")) == "piper":
-            engine = self._make_piper_engine()
+        chosen = str(self._settings.value("tts_engine", "system"))
+        if chosen in ("piper", "kokoro"):
+            engine = (self._make_piper_engine() if chosen == "piper"
+                      else self._make_kokoro_engine())
             if engine is not None:
                 self._tts = engine
                 self._tts.sayingWord.connect(self._on_tts_word)
@@ -1676,6 +1738,37 @@ class MainWindow(QMainWindow):
             return None
         return PiperEngine(exe, voice, self)
 
+    def _make_kokoro_engine(self):
+        """Build the Kokoro engine from Settings, or None (with a status
+        bar line saying what is missing) so the caller can fall back."""
+        from wordvault.editor.kokoro_voice import (
+            DEFAULT_VOICE, ENGLISH_VOICES, KokoroEngine, kokoro_files,
+            what_is_missing,
+        )
+
+        # The folder is not in the Settings dialog (the installer always
+        # uses ~/kokoro), but a "kokoro_dir" setting is honoured for
+        # anyone who keeps the files elsewhere.
+        folder = str(self._settings.value("kokoro_dir", "")) or None
+        missing = what_is_missing(folder)
+        if missing is not None:
+            self.statusBar().showMessage(
+                f"Kokoro voice not ready ({missing} not found); using the "
+                "system voice. Run: python tools/install_kokoro.py", 10000)
+            return None
+        voice = str(self._settings.value("kokoro_voice", "")) or DEFAULT_VOICE
+        if voice not in ENGLISH_VOICES:
+            voice = DEFAULT_VOICE
+        model, voices = kokoro_files(folder)
+        return KokoroEngine(model, voices, voice, self)
+
+    def _on_toggle_find_boxes(self, on: bool) -> None:
+        """View ▸ Find Boxes: show or hide the Find box in both caption
+        bars together, and remember the choice for next start."""
+        for find in self._caption_finds:
+            find.setVisible(on)
+        self._settings.setValue("find_boxes", on)
+
     def _drop_tts(self) -> None:
         """Forget the engine (after Settings changed the voice) so the
         next Read builds the newly chosen one."""
@@ -1691,7 +1784,7 @@ class MainWindow(QMainWindow):
         tts = getattr(self, "_tts", None)
         if tts is None:
             return False
-        if hasattr(tts, "speaking"):          # PiperEngine
+        if hasattr(tts, "speaking"):          # PiperEngine, KokoroEngine
             return bool(tts.speaking)
         from PyQt6.QtTextToSpeech import QTextToSpeech
 
@@ -1784,11 +1877,12 @@ class MainWindow(QMainWindow):
         self._apply_age_colors()      # repaint without the light
 
     def _on_tts_failed(self, message: str) -> None:
-        """Piper hit a problem mid-read: say so and forget the engine,
-        so the next Read starts a fresh one (the setting is left alone;
-        a one-off hiccup should not silently change the writer's
-        choice of voice)."""
-        self.statusBar().showMessage(f"Piper: {message}", 10000)
+        """Piper or Kokoro hit a problem mid-read: say so and forget
+        the engine, so the next Read starts a fresh one (the setting is
+        left alone; a one-off hiccup should not silently change the
+        writer's choice of voice)."""
+        name = str(self._settings.value("tts_engine", "piper")).capitalize()
+        self.statusBar().showMessage(f"{name}: {message}", 10000)
         self._drop_tts()
 
     def _on_tts_word(self, _word, _utterance, start, length) -> None:
@@ -3832,6 +3926,11 @@ class MainWindow(QMainWindow):
         preview.setWindowTitle(
             f"Print Preview — {self._current_doc.title}")
         preview.resize(920, 720)
+        # Black ink on the white page even in dark mode; without this
+        # the preview draws the text in the theme's pale gray.
+        from wordvault.printing.renderer import ink_on_paper
+
+        ink_on_paper(preview)
         preview.paintRequested.connect(
             lambda p: self._render_to_printer(p, choices))
         preview.exec()
@@ -4847,6 +4946,12 @@ class MainWindow(QMainWindow):
             self._store.close()
         except Exception as exc:  # never trap the user in a broken window
             QMessageBox.warning(self, "WordVault", f"Error while closing: {exc}")
+        # Let go of any update check still asking GitHub, so its answer
+        # is not delivered to a window that is gone.  The check itself
+        # finishes quietly in the background (see wordvault/updater.py).
+        from wordvault.updater import release_workers
+
+        release_workers(self._update_workers)
         event.accept()
 
     # ------------------------------------------------------------- status --

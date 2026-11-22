@@ -22,6 +22,7 @@ QTextDocument uses for print layout.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from PyQt6.QtCore import QMarginsF, Qt
 from PyQt6.QtGui import (
@@ -189,12 +190,39 @@ def build_print_document(
 
     When the format defines a [byline], its expanded template is inserted
     as a generated block AFTER the first heading — or before everything
-    when the document opens with plain text instead of a title."""
+    when the document opens with plain text instead of a title.
+
+    Blank lines: ONE blank line only separates paragraphs (the gap is
+    the format's space_after_pt, which a book format may set to zero).
+    Every blank line BEYOND that first one prints as a real empty line,
+    exactly as tall as a line of body text, so a writer who presses
+    Return again to open up some room gets that room on paper."""
     document = QTextDocument()
     cursor = QTextCursor(document)
     first = True
     list_counter = 0          # sequential numbering per contiguous list
     paragraph_lines: list[str] = []
+    blank_run = 0             # blank lines seen since the last text
+
+    # The style of a printed empty line: the body's own font and line
+    # spacing, so it stands exactly as tall as a line of body text,
+    # with no indent, no extra space around it, and never a page break.
+    blank_style = replace(
+        fmt.body, first_line_indent_mm=0.0, indent_mm=0.0,
+        space_before_pt=0.0, space_after_pt=0.0, page_break_before=False)
+
+    def write_blank_lines():
+        """Print the blank lines the writer added for spacing, just
+        before the text that follows them.  The first blank line of a
+        run is the ordinary paragraph separator and prints nothing;
+        blank lines at the very top of a document print nothing either,
+        and trailing ones never arrive here (no text follows them), so
+        they cannot push out an empty last page."""
+        nonlocal blank_run
+        if not first:
+            for _ in range(blank_run - 1):
+                _write_block(cursor, blank_style, "", False)
+        blank_run = 0
 
     byline_pending = bool(fmt.byline_text)
     byline_vars = {"title": title, "author": author, "date": date_str}
@@ -225,6 +253,7 @@ def build_print_document(
 
         if heading:
             flush_paragraph()
+            write_blank_lines()
             level = len(heading.group(1))
             style = fmt.style_for_heading(level)
             _write_block(cursor, style, heading.group(2).strip(), first)
@@ -241,22 +270,31 @@ def build_print_document(
             write_byline()               # the byline follows the title
         elif quote:
             flush_paragraph()
+            write_blank_lines()
             _write_block(cursor, fmt.style_for_quote(), quote.group(1), first)
             first = False
         elif bullet:
             flush_paragraph()
+            write_blank_lines()
             _write_block(cursor, fmt.style_for_list(), bullet.group(1),
                          first, prefix="•  ")
             first = False
         elif numbered:
             flush_paragraph()
+            write_blank_lines()
             list_counter += 1
             _write_block(cursor, fmt.style_for_list(), numbered.group(1),
                          first, prefix=f"{list_counter}.  ")
             first = False
         elif not line.strip():
             flush_paragraph()                     # blank line ends a paragraph
+            blank_run += 1                        # and is counted for spacing
         else:
+            if not paragraph_lines:
+                # A new paragraph begins here.  This comes BEFORE the
+                # byline below, so blank lines at the top of a document
+                # are dropped rather than printed under the byline.
+                write_blank_lines()
             if byline_pending:
                 write_byline()   # no opening heading: byline leads the text
             paragraph_lines.append(line.strip())  # plain prose accumulates
@@ -340,6 +378,48 @@ def page_setup_for_preview(printer, fmt: PrintFormat) -> None:
     touching the printer inside paintRequested blanks the preview."""
     apply_page_setup(printer, fmt)
     printer.setFullPage(fmt.needs_manual_pagination())
+
+
+def ink_on_paper(preview) -> None:
+    """Make a print preview draw black ink, whatever the screen theme.
+
+    ``preview`` is a QPrintPreviewWidget or a QPrintPreviewDialog.
+
+    Why this is needed: Qt's preview does not paint pages directly.  It
+    RECORDS the painting and plays the recording back onto the screen.
+    Black is a painter's starting colour, so "use black" is never
+    written into the recording, and on playback the text takes the
+    preview window's own text colour instead.  In light mode that is
+    black and nobody notices.  In dark mode it is pale gray, on a white
+    page, which is the "text so light it can hardly be seen" report
+    (Nov 2026).  Real printing and PDFs were never affected.
+
+    The cure is to give the preview, and every widget inside it, a
+    palette whose text colours are black.  The page stays white and
+    the gray surround stays as it was.
+    """
+    from PyQt6.QtGui import QPalette
+    from PyQt6.QtPrintSupport import QPrintPreviewWidget
+    from PyQt6.QtWidgets import QAbstractScrollArea
+
+    # A dialog wraps the real preview widget; find it inside.
+    if isinstance(preview, QPrintPreviewWidget):
+        widgets = [preview]
+    else:
+        widgets = preview.findChildren(QPrintPreviewWidget)
+    black = QColor(0, 0, 0)
+    for widget in widgets:
+        # The pages are drawn by a graphics view inside the preview;
+        # its viewport is the surface the playback painter starts from.
+        targets = [widget]
+        for view in widget.findChildren(QAbstractScrollArea):
+            targets += [view, view.viewport()]
+        for target in targets:
+            palette = QPalette(target.palette())
+            for role in (QPalette.ColorRole.WindowText,
+                         QPalette.ColorRole.Text):
+                palette.setColor(role, black)
+            target.setPalette(palette)
 
 
 def print_styled(printer, markdown_text: str, fmt: PrintFormat, *,

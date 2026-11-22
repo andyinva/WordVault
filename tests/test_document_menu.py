@@ -192,3 +192,125 @@ def test_step_through_version_chain(qapp, tmp_path):
     window._on_step_version(+1)
     assert window._current_doc.id == ids[2]
     window.close()
+
+
+# -- find boxes in the caption bars -----------------------------------------
+
+def test_find_boxes_toggle_align_and_search_their_own_pane(window_with_text):
+    """View > Find Boxes shows a "Find:" box beside "WV Editor" and
+    "WV Notes Editor" (Nov 2026 request): hidden when unchecked, lined
+    up with each other, and each searching only its own pane."""
+    window = window_with_text
+    window.show()
+    editor_find, notes_find = window._caption_finds
+
+    # Unchecked: the boxes are not there.
+    window._find_boxes_action.setChecked(False)
+    assert editor_find.isHidden() and notes_find.isHidden()
+
+    # Checked: both appear, starting at the same distance from the left.
+    window._find_boxes_action.setChecked(True)
+    QApplication.processEvents()
+    assert not editor_find.isHidden() and not notes_find.isHidden()
+    assert editor_find.x() == notes_find.x()
+    assert window._settings.value("find_boxes", type=bool) is True
+
+    # The editor's box finds text in the document...
+    window._notes.setPlainText("a note about gamma rays\n")
+    editor_find._edit.setText("beta")
+    assert window._editor.textCursor().selectedText() == "beta"
+    first = window._editor.textCursor().position()
+    assert editor_find.find_next()
+    assert window._editor.textCursor().position() != first
+
+    # ...and the notes box finds text in the notes, leaving the
+    # document's own selection alone.
+    notes_find._edit.setText("gamma")
+    assert window._notes.textCursor().selectedText() == "gamma"
+    assert window._editor.textCursor().selectedText() == "beta"
+
+    notes_find._edit.setText("nowhere")
+    assert notes_find._status.text() == "not found"
+
+    window._find_boxes_action.setChecked(False)     # leave it as found
+    assert editor_find.isHidden() and notes_find.isHidden()
+
+
+# -- every match marked, and counted -----------------------------------------
+
+def test_find_marks_every_match_and_counts_them(window_with_text):
+    """Searching for a word colours EVERY place it stands and says how
+    many there are, beside the box (Nov 2026 request: "search for
+    spirit ... make spirit in blue every time ... say how many")."""
+    from PyQt6.QtGui import QColor
+
+    from wordvault.editor.find_bar import MATCH_BACKGROUND
+
+    window = window_with_text
+    window.show()
+    window._find_boxes_action.setChecked(True)
+    QApplication.processEvents()
+    editor_find, notes_find = window._caption_finds
+    blue = QColor(MATCH_BACKGROUND)
+
+    def marked(editor):
+        """The text of every blue mark now showing in an editor."""
+        return [sel.cursor.selectedText()
+                for sel in editor.extraSelections()
+                if sel.format.background().color() == blue]
+
+    text = window._editor.toPlainText()
+    editor_find._edit.setText("BETA")               # any letter case
+    expected = text.lower().count("beta")
+    assert expected >= 2
+    assert [m.lower() for m in marked(window._editor)] == ["beta"] * expected
+    assert editor_find._count.text() == f"{expected} found"
+
+    # The document's other decorations may be reset at any time
+    # without the marks being lost.
+    window._editor.setExtraSelections([])
+    assert len(marked(window._editor)) == expected
+
+    # The notes box marks the notes, and only the notes.
+    window._notes.setPlainText("spirit and Spirit, in spirit\n")
+    notes_find._edit.setText("spirit")
+    assert len(marked(window._notes)) == 3
+    assert notes_find._count.text() == "3 found"
+    assert len(marked(window._editor)) == expected
+
+    # No match: nothing marked, no count, and the status says so.
+    notes_find._edit.setText("nowhere")
+    assert marked(window._notes) == []
+    assert notes_find._count.text() == ""
+    assert notes_find._status.text() == "not found"
+
+    # Emptying the box, or switching the boxes off, removes the marks.
+    editor_find._edit.setText("")
+    assert marked(window._editor) == []
+    editor_find._edit.setText("beta")
+    window._find_boxes_action.setChecked(False)
+    assert marked(window._editor) == []
+
+
+def test_find_bar_marks_and_counts_too(window_with_text):
+    """The Ctrl+F bar marks and counts the same way, and takes its
+    marks away when it is closed."""
+    from PyQt6.QtGui import QColor
+
+    from wordvault.editor.find_bar import MATCH_BACKGROUND
+
+    window = window_with_text
+    bar = window._find_bar
+    blue = QColor(MATCH_BACKGROUND)
+
+    def marks():
+        return [s for s in window._editor.extraSelections()
+                if s.format.background().color() == blue]
+
+    bar.open_bar()
+    bar._edit.setText("beta")
+    expected = window._editor.toPlainText().lower().count("beta")
+    assert len(marks()) == expected
+    assert bar._count.text() == f"{expected} found"
+    bar.close_bar()
+    assert marks() == []
