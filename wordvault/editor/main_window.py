@@ -258,6 +258,8 @@ class MainWindow(QMainWindow):
         self._refresh_autocorrect()
         if self._settings.value("find_boxes", False, type=bool):
             self._find_boxes_action.setChecked(True)
+        if not self._settings.value("edit_buttons", True, type=bool):
+            self._edit_buttons_action.setChecked(False)
 
         # Theme: photograph the platform's REAL look before anything
         # is touched — style name AND the actual startup palette (the
@@ -472,7 +474,7 @@ class MainWindow(QMainWindow):
         # same fixed width: the longer caption plus about an inch.
         from PyQt6.QtWidgets import QHBoxLayout
 
-        from wordvault.editor.find_bar import CaptionFind
+        from wordvault.editor.find_bar import CaptionBar, CaptionFind
 
         captions = ("WV Editor", "WV Notes Editor")
         probe = QLabel(self)                       # only to measure text
@@ -481,30 +483,37 @@ class MainWindow(QMainWindow):
             + probe.logicalDpiX())                 # one inch of screen
         probe.deleteLater()
         self._caption_finds: list[CaptionFind] = []
+        self._caption_bars: list[CaptionBar] = []
 
-        def captioned(widget, text: str) -> QWidget:
-            label = QLabel(text, self)
-            label.setFixedWidth(caption_width)     # so the Finds align
+        # The row of edit buttons (Undo, Bold, lists...) that follows
+        # the document editor's Find box.  It is only an empty holder
+        # here: the buttons press Edit-menu commands, which do not
+        # exist until the menus are built, so _fill_edit_buttons puts
+        # them in afterwards.
+        self._edit_buttons = QWidget(self)
+        self._edit_buttons_row = QHBoxLayout(self._edit_buttons)
+        self._edit_buttons_row.setContentsMargins(8, 0, 0, 0)
+        self._edit_buttons_row.setSpacing(0)
+
+        def captioned(widget, text: str, extra: QWidget = None) -> QWidget:
             find = CaptionFind(widget, self)       # hidden until asked for
             self._caption_finds.append(find)
-            # The caption row: title at the left, Find after it, and
-            # empty space to the right edge.
-            row = QHBoxLayout()
-            row.setContentsMargins(6, 3, 6, 2)
-            row.setSpacing(0)
-            row.addWidget(label)
-            row.addWidget(find)
-            row.addStretch(1)
+            # The caption bar: title at the left, Find after it, then
+            # any extra widget (the edit buttons).  CaptionBar shares
+            # the width out so the Finds stay aligned (find_bar.py).
+            bar = CaptionBar(text, caption_width, find, extra, self)
+            self._caption_bars.append(bar)
             host = QWidget(self)
             box = QVBoxLayout(host)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(0)
-            box.addLayout(row)
+            box.addWidget(bar)
             box.addWidget(widget, stretch=1)
             return host
 
         self._split = QSplitter(Qt.Orientation.Vertical, self)
-        self._split.addWidget(captioned(self._editor, captions[0]))
+        self._split.addWidget(
+            captioned(self._editor, captions[0], self._edit_buttons))
         self._split.addWidget(captioned(self._notes, captions[1]))
         self._split.setStretchFactor(0, 2)   # document: 2/3
         self._split.setStretchFactor(1, 1)   # notes: 1/3
@@ -874,12 +883,19 @@ class MainWindow(QMainWindow):
         # --- Edit menu: clipboard, Markdown commands, gather marking ---
         edit_menu = self.menuBar().addMenu("&Edit")
 
+        # Every Edit command is also kept by name, so the row of edit
+        # buttons beside the Find box can press the very same command
+        # (one behaviour, two ways to reach it).
+        self._edit_actions: dict[str, QAction] = {}
+
         def add_edit(text, shortcut, slot):
             action = QAction(text, self)
             if shortcut:
                 action.setShortcut(shortcut)
             action.triggered.connect(slot)
             edit_menu.addAction(action)
+            # "Toggle Bullet &List" is filed under "Toggle Bullet List".
+            self._edit_actions[text.replace("&", "")] = action
             return action
 
         add_edit("&Read Aloud from Cursor", "Ctrl+Shift+R",
@@ -910,7 +926,9 @@ class MainWindow(QMainWindow):
         add_edit("Remove &Heading", "Ctrl+0",
                  lambda: self._editor.set_heading_level(0))
         add_edit("Toggle Bullet &List", "Ctrl+Shift+L",
-                 lambda: self._editor.toggle_line_prefix("- "))
+                 lambda: self._editor.toggle_list("bullet"))
+        add_edit("Toggle Nu&mbered List", "Ctrl+Shift+N",
+                 lambda: self._editor.toggle_list("numbered"))
         add_edit("Toggle &Quote", "Ctrl+Shift+Q",
                  lambda: self._editor.toggle_line_prefix("> "))
         edit_menu.addSeparator()
@@ -919,6 +937,9 @@ class MainWindow(QMainWindow):
         mark_action.setShortcut("Ctrl+M")
         mark_action.triggered.connect(self._on_mark_for_gather)
         edit_menu.addAction(mark_action)
+
+        # The Edit commands exist now: give the caption bar its buttons.
+        self._fill_edit_buttons()
 
         # --- Document menu: everything about the OPEN document ---
         doc_menu = self.menuBar().addMenu("&Document")
@@ -1070,6 +1091,18 @@ class MainWindow(QMainWindow):
             "Notes Editor”; each searches its own pane as you type")
         self._find_boxes_action.toggled.connect(self._on_toggle_find_boxes)
         view_menu.addAction(self._find_boxes_action)
+
+        # The row of edit buttons (Undo, Redo, Bold, Italic, headings,
+        # lists, quote) beside the document editor's Find box.
+        self._edit_buttons_action = QAction("&Edit Buttons", self)
+        self._edit_buttons_action.setCheckable(True)
+        self._edit_buttons_action.setChecked(True)
+        self._edit_buttons_action.setToolTip(
+            "Show buttons for the common Edit commands beside the title "
+            "“WV Editor”")
+        self._edit_buttons_action.toggled.connect(
+            self._on_toggle_edit_buttons)
+        view_menu.addAction(self._edit_buttons_action)
 
         view_menu.addSeparator()
 
@@ -1761,6 +1794,84 @@ class MainWindow(QMainWindow):
             voice = DEFAULT_VOICE
         model, voices = kokoro_files(folder)
         return KokoroEngine(model, voices, voice, self)
+
+    def _fill_edit_buttons(self) -> None:
+        """Put the edit buttons into their holder in the caption bar.
+
+        Each button presses one Edit-menu command, so the button, the
+        menu item and the keyboard shortcut all do exactly the same
+        thing.  The buttons wear letters and plain signs, not little
+        pictures: those read the same on Windows and Ubuntu and in both
+        themes, and they are narrow, so all ten fit beside the Find box
+        in an ordinary window.  Pointing at a button says in words what
+        it does.  They never take the keyboard focus, so the cursor and
+        the selection stay in the text while a button is pressed."""
+        from PyQt6.QtWidgets import QToolButton
+
+        # (sign on the button, Edit command it presses, what it does).
+        # None starts a new group, set off by a little space.
+        buttons = [
+            ("↶", "Undo", "Undo the last change"),
+            ("↷", "Redo", "Redo the change just undone"),
+            None,
+            ("B", "Bold", "Bold: the selection, or the word at the cursor"),
+            ("I", "Italic",
+             "Italic: the selection, or the word at the cursor"),
+            None,
+            ("H1", "Heading 1", "Make this line a main heading"),
+            ("H2", "Heading 2", "Make this line a section heading"),
+            ("H3", "Heading 3", "Make this line a sub-heading"),
+            None,
+            ("• ≡", "Toggle Bullet List",
+             "Bullet list: turn the selected lines into bullet points, "
+             "or back. On an empty line, start a list."),
+            ("1. ≡", "Toggle Numbered List",
+             "Numbered list: number the selected lines 1, 2, 3..., or "
+             "take the numbers off. On an empty line, start a list."),
+            ("❝", "Toggle Quote",
+             "Quote: mark the selected lines as a quotation, or unmark"),
+        ]
+        self._edit_tool_buttons: dict[str, QToolButton] = {}
+        for entry in buttons:
+            if entry is None:
+                self._edit_buttons_row.addSpacing(4)
+                continue
+            sign, command, what = entry
+            action = self._edit_actions[command]
+            button = QToolButton(self._edit_buttons)
+            button.setText(sign)
+            button.setAutoRaise(True)                 # flat until hovered
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            shortcut = action.shortcut().toString(
+                QKeySequence.SequenceFormat.NativeText)
+            button.setToolTip(f"{what} ({shortcut})" if shortcut else what)
+            # A size larger than the caption's own lettering, so the
+            # signs are easy to make out; and B looks bold and I looks
+            # italic, as on any word processor.
+            font = button.font()
+            if font.pointSizeF() > 0:     # (a font sized in pixels says -1)
+                font.setPointSizeF(font.pointSizeF() + 1.5)
+            font.setBold(command == "Bold")
+            font.setItalic(command == "Italic")
+            button.setFont(font)
+            button.clicked.connect(action.trigger)
+            # Hold each button at its natural width, so its sign is
+            # never squeezed down to "...", and no taller than the
+            # caption's own lettering needs, so the bar stays as slim
+            # as it was before it had buttons.
+            button.setFixedSize(max(button.sizeHint().width() - 2, 24),
+                                button.fontMetrics().height() + 4)
+            self._edit_buttons_row.addWidget(button)
+            self._edit_tool_buttons[command] = button
+        # The bar can now see how wide the full row of buttons is.
+        self._caption_bars[0].refit()
+
+    def _on_toggle_edit_buttons(self, on: bool) -> None:
+        """View ▸ Edit Buttons: show or hide the row of edit buttons,
+        and remember the choice for next start."""
+        self._edit_buttons.setVisible(on)
+        self._caption_bars[0].refit()      # hand their room back, or take it
+        self._settings.setValue("edit_buttons", on)
 
     def _on_toggle_find_boxes(self, on: bool) -> None:
         """View ▸ Find Boxes: show or hide the Find box in both caption
@@ -3525,6 +3636,8 @@ class MainWindow(QMainWindow):
         self._editor.setProperty("mode", "live" if live else "history")
         self._editor.style().unpolish(self._editor)
         self._editor.style().polish(self._editor)
+        # An old version cannot be edited, so its edit buttons go gray.
+        self._edit_buttons.setEnabled(live)
 
     def _on_restore(self) -> None:
         """Append the currently VIEWED old state as a brand-new revision.

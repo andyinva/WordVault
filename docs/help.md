@@ -48,9 +48,28 @@ Light formatting lives right in the text as simple marks the editor
 displays nicely: **Ctrl+B** makes the selection `**bold**`, **Ctrl+I**
 makes it `*italic*`, **Ctrl+1/2/3** turn the current line into a heading
 (`# `, `## `, `### ` — Ctrl+0 removes it), **Ctrl+Shift+L** toggles a
-bullet list and **Ctrl+Shift+Q** a quote. Enter inside a list continues
-it; Enter on an empty item ends it. These marks are how formatting
-survives into the future Formatter — the text itself stays plain.
+bullet list, **Ctrl+Shift+N** a numbered list and **Ctrl+Shift+Q** a
+quote. These marks are how formatting survives into the future
+Formatter — the text itself stays plain.
+
+**Building a list.** Select the lines and press the list command:
+bullets put `- ` before each line, numbers count `1. `, `2. `, `3. `
+down the selection. Press the same command again and the marks come
+off; press the other one and a bullet list becomes a numbered one, or
+back. On an empty line the command just types the first mark, ready
+for the first item. While you write, Enter at the end of an item starts
+the next one (the next number, in a numbered list), Enter in the middle
+of an item splits it in two, and Enter on an empty item ends the list.
+Add an item in the middle of a numbered list and the items below are
+renumbered to follow.
+
+**The edit buttons.** The common Edit commands also have buttons in the
+caption bar of the editor, after the Find box: ↶ undo, ↷ redo, **B**
+bold, *I* italic, H1 H2 H3 headings, • ≡ bullet list, 1. ≡ numbered
+list and ❝ quote. Each does exactly what its Edit menu item does, and
+pointing at one names it with its keyboard shortcut. **View ▸ Edit
+Buttons** hides or shows them. They are gray while you are looking at
+an old version, which cannot be edited.
 
 ### Knowing where your typing goes
 

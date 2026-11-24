@@ -282,6 +282,145 @@ class EditorPane(QPlainTextEdit):
         span.insertText("\n".join(new_lines))
         span.endEditBlock()
 
+    # -- lists ----------------------------------------------------------------
+    #
+    # A list in the vault is plain text: a bullet item is a line that
+    # begins "- " and a numbered item is one that begins "1. ", "2. "
+    # and so on.  The editor helps ASSEMBLE them: the list commands put
+    # the markers on and take them off, Enter carries a list on to its
+    # next item, and the numbers are kept counting upward when an item
+    # is added in the middle.
+
+    #: The start of a list line: leading spaces, then EITHER a bullet
+    #: ("- " or "* ") OR a number with a period ("12. ").
+    _LIST_MARK = re.compile(r"^(\s*)(?:([-*]) |(\d{1,3})\. )")
+
+    @classmethod
+    def _split_list_line(cls, line: str):
+        """Take a line apart: (indent, kind, number, text).  ``kind`` is
+        "bullet", "numbered" or None for an ordinary line; ``number``
+        is the item's number for a numbered line, else None."""
+        m = cls._LIST_MARK.match(line)
+        if not m:
+            indent = line[: len(line) - len(line.lstrip())]
+            return indent, None, None, line[len(indent):]
+        if m.group(2):
+            return m.group(1), "bullet", None, line[m.end():]
+        return m.group(1), "numbered", int(m.group(3)), line[m.end():]
+
+    def toggle_list(self, kind: str) -> None:
+        """Turn the selected lines (or the line the cursor is on) into
+        a list, or back into ordinary lines.  ``kind`` is "bullet" or
+        "numbered".
+
+          * Ordinary lines gain the marker: "- " for bullets, or
+            "1. ", "2. ", "3. " counting down the selection.
+          * Lines that are already THAT kind of list lose the marker.
+          * Lines of the OTHER kind are switched over, so a bullet list
+            becomes a numbered one (and back) in one press.
+          * On an empty line the marker is simply typed, ready for the
+            first item.
+
+        A numbered list that begins straight under another numbered
+        item carries on from its number, and any numbered items below
+        are recounted to follow.  The whole change is one undo step."""
+        if self.isReadOnly() or kind not in ("bullet", "numbered"):
+            return
+        doc = self.document()
+        cursor = self.textCursor()
+        had_selection = cursor.hasSelection()
+        first = doc.findBlock(cursor.selectionStart()).blockNumber()
+        last_block = doc.findBlock(cursor.selectionEnd())
+        # A selection that ends at the very start of a line (whole
+        # lines were dragged over) does not include that last line.
+        if (had_selection and last_block.blockNumber() > first
+                and cursor.selectionEnd() == last_block.position()):
+            last_block = last_block.previous()
+        last = last_block.blockNumber()
+        # Where the cursor sits in its line, to put it back afterwards.
+        cursor_block = cursor.block().blockNumber()
+        cursor_column = cursor.positionInBlock()
+
+        lines = [doc.findBlockByNumber(n).text()
+                 for n in range(first, last + 1)]
+        parts = [self._split_list_line(line) for line in lines]
+        written = [part for part, line in zip(parts, lines) if line.strip()]
+        # Every written line already this kind of list: take it off.
+        removing = bool(written) and all(p[1] == kind for p in written)
+
+        # A numbered list carries on from a numbered item just above.
+        number = 1
+        if kind == "numbered" and first > 0:
+            above = self._split_list_line(
+                doc.findBlockByNumber(first - 1).text())
+            indent_here = (written[0] if written else parts[0])[0]
+            if above[1] == "numbered" and above[0] == indent_here:
+                number = above[2] + 1
+
+        new_lines = []
+        for (indent, _old_kind, _n, text), line in zip(parts, lines):
+            if not line.strip() and written:
+                new_lines.append(line)        # blank lines pass through
+            elif removing:
+                new_lines.append(indent + text)
+            elif kind == "bullet":
+                new_lines.append(f"{indent}- {text}")
+            else:
+                new_lines.append(f"{indent}{number}. {text}")
+                number += 1
+
+        # Replace the whole span, and recount what follows, as ONE undo
+        # step.
+        span = QTextCursor(doc.findBlockByNumber(first))
+        end_block = doc.findBlockByNumber(last)
+        span.setPosition(end_block.position() + len(end_block.text()),
+                         QTextCursor.MoveMode.KeepAnchor)
+        span.beginEditBlock()
+        span.insertText("\n".join(new_lines))
+        self._recount_numbers_after(last)
+        span.endEditBlock()
+
+        # Put the selection (or the cursor) back where the writer had it.
+        place = QTextCursor(doc.findBlockByNumber(first))
+        if had_selection:
+            end_block = doc.findBlockByNumber(last)
+            place.setPosition(end_block.position() + len(end_block.text()),
+                              QTextCursor.MoveMode.KeepAnchor)
+        else:
+            old, new = lines[0], new_lines[0]
+            block = doc.findBlockByNumber(cursor_block)
+            # Keep the cursor on the same letter: shift it by however
+            # much the marker made the line longer or shorter, and
+            # never leave it stranded inside the marker itself.
+            marker_len = len(new) - len(self._split_list_line(new)[3])
+            column = max(marker_len, cursor_column + len(new) - len(old))
+            place.setPosition(block.position() + min(column, len(new)))
+        self.setTextCursor(place)
+
+    def _recount_numbers_after(self, block_number: int) -> None:
+        """Keep a numbered list counting upward.  If the line at
+        ``block_number`` is a numbered item, every numbered item
+        directly below it (same indent, no gap) is given the next
+        number in turn.  Called inside the caller's undo step."""
+        doc = self.document()
+        block = doc.findBlockByNumber(block_number)
+        indent, kind, number, _text = self._split_list_line(block.text())
+        if kind != "numbered":
+            return
+        block = block.next()
+        while block.isValid():
+            line = block.text()
+            b_indent, b_kind, b_number, b_text = self._split_list_line(line)
+            if b_kind != "numbered" or b_indent != indent:
+                break                          # the list ends here
+            number += 1
+            if b_number != number:
+                fix = QTextCursor(block)
+                fix.movePosition(QTextCursor.MoveOperation.EndOfBlock,
+                                 QTextCursor.MoveMode.KeepAnchor)
+                fix.insertText(f"{b_indent}{number}. {b_text}")
+            block = block.next()
+
     def set_autocorrect_lookup(self, lookup) -> None:
         """dict typed(lower) -> corrected, or None to disable."""
         self._autocorrect_lookup = lookup
@@ -316,7 +455,9 @@ class EditorPane(QPlainTextEdit):
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         """Smart list/quote continuation: Enter inside a "- ", "1. " or
         "> " line starts the next line with the same marker; Enter on an
-        EMPTY marker line ends the list by clearing the marker.
+        EMPTY marker line ends the list by clearing the marker.  Enter
+        in the MIDDLE of an item splits it in two items, and in a
+        numbered list the items below are recounted to follow.
 
         Paragraph return (Settings, on by default): outside lists, a
         plain Enter adds the blank line too — in the vault a paragraph
@@ -357,12 +498,24 @@ class EditorPane(QPlainTextEdit):
                                         QTextCursor.MoveMode.KeepAnchor)
                     cursor.removeSelectedText()
                     return
-                if cursor.atBlockEnd():
+                if (cursor.positionInBlock() >= m.end()
+                        and not self.isReadOnly()):
+                    # At the end of an item: start the next one.  In
+                    # the middle of an item: the words after the cursor
+                    # become the next item.  Either way the new line
+                    # begins with the same marker.
                     prefix = m.group(0)
                     if m.group(3):            # numbered: count upward
                         prefix = f"{m.group(1)}{int(m.group(3)) + 1}. "
-                    super().keyPressEvent(event)
-                    self.textCursor().insertText(prefix)
+                    cursor.beginEditBlock()   # one undo step for it all
+                    cursor.insertText("\n" + prefix)
+                    if m.group(3):
+                        # Items below a new numbered item move up one.
+                        self._recount_numbers_after(
+                            cursor.block().blockNumber())
+                    cursor.endEditBlock()
+                    self.setTextCursor(cursor)
+                    self.ensureCursorVisible()
                     return
             if self._paragraph_return and not self.isReadOnly():
                 cursor = self.textCursor()
